@@ -7,6 +7,7 @@ name = "pypi"
 requests = "*"
 beautifulsoup4 = "*"
 lxml = "*"
+feedparser = "*"
 
 [dev-packages]
 mypy = "*"
@@ -15,3 +16,7 @@ types-requests = "*"
 
 [requires]
 python_version = "3.11"
+
+[scripts]
+# No idea why --explicit-package-bases is required and don't care enough to find out
+typecheck = "mypy . --scripts-are-modules"

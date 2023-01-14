@@ -4,6 +4,7 @@ from urllib import parse
 
 import bs4
 import requests
+from scanner.feed import scan_site_for_feed, link_generator_from_feed, RssItem
 
 
 class Link(NamedTuple):
@@ -11,20 +12,9 @@ class Link(NamedTuple):
     url: str
 
 
-def is_absolute_link(url: str) -> bool:
-    return parse.urlparse(url).netloc is not None
-
-
 def is_only_fragment(url: str) -> bool:
     *stuff, fragment = parse.urlparse(url)
     return bool(not any(s for s in stuff) and fragment)
-
-
-def link_generator_from_rss(xml: bs4.BeautifulSoup) -> Iterable[Link]:
-    for item in xml.find_all('item'):
-        title = item.find('title').text
-        link = item.find('link').text
-        yield Link(title=title, url=link)
 
 
 def fetch_page_check_webmention(url: str) -> None:
@@ -57,46 +47,40 @@ def fetch_page_check_webmention(url: str) -> None:
         print(f'😢 No webmention for {url}.')
 
 
-# TODO change to a real link
-def parse_page_find_more_links(page_link: Link) -> Iterable[str]:
-    assert is_absolute_link(page_link.url)
-    parsed_page_link_netloc = parse.urlparse(page_link.url).netloc
-    r = requests.get(page_link.url)
+def parse_page_find_links(page_link: RssItem) -> Iterable[str]:
+    parsed_page_link_netloc = parse.urlparse(page_link.absolute_url).netloc
+    r = requests.get(page_link.absolute_url)
     assert r.ok
     html = bs4.BeautifulSoup(r.text, features="lxml")
     article, = html.find_all(attrs={'itemtype': "https://schema.org/Article"})
     article_body = article.find(attrs={'itemprop': 'articleBody'})
     for link in article_body.find_all('a'):
         # TODO: filter out nofollow etc
-        url = link['href']
+        # TODO: maybe include images?
+        url = link.get('href')
+        if not url:
+            # Can't work with links that don't have an HREF
+            continue
         if is_only_fragment(url):
             # print(f'Skipping {url}, is only fragment')
             continue
-        elif parse.urlparse(parse.urljoin(page_link.url, url)).netloc == parsed_page_link_netloc:
-            # TODO maybe also skip a hierarchy of all referred pages
+        abs_link = parse.urljoin(page_link.absolute_url, url)
+        parsed_abs_link = parse.urlparse(abs_link)
+        if parsed_abs_link.scheme not in ('http', 'https'):
+            continue
+        if parsed_abs_link.netloc == parsed_page_link_netloc:
             # print(f'Skipping {url}, same-origin', file=sys.stderr)
             continue
 
-        abs_link = parse.urljoin(page_link.url, url)
         # print('outputting', abs_link)
         yield abs_link
 
 
 def scan(url: str) -> None:
-    r = requests.get(url)
-    assert r.ok
-    html = bs4.BeautifulSoup(r.text, features="lxml")
-    # <link href="https://capnfabs.net/posts/index.xml" rel="alternate" title="fabian writes." type="application/rss+xml"/>
-    rss_link = html.find('link', attrs={'rel': 'alternate', 'type': 'application/rss+xml'})
-    assert rss_link
-    resolved_url = parse.urljoin(url, rss_link['href'])
-    r = requests.get(resolved_url)
-    assert r.ok
-    xml = bs4.BeautifulSoup(r.text, features="xml")
-
-    for article_link in link_generator_from_rss(xml):
+    feed = scan_site_for_feed(url)
+    for article_link in link_generator_from_feed(feed):
         # assumes that every article_link is absolute, TODO assert this
-        for link in parse_page_find_more_links(article_link):
+        for link in parse_page_find_links(article_link):
             fetch_page_check_webmention(link)
 
 

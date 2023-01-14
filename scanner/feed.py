@@ -57,10 +57,16 @@ def scan_site_for_feed(url: str) -> Optional[Feed]:
 
         assert util.is_absolute_link(resolved_url)
         # don't need HTML sanitisation because we're not sticking it in a website or anything
-        # wrapped in StringIO because as per docs, untrusted strings can trigger filesystem access (!?)
+        # wrapped in BytesIO because as per docs, untrusted strings can trigger filesystem access (!?)
         # It is cursed; I do not like it one bit.
+        # the docs say that you can pass a StringIO around a string, but it breaks a regex somewhere in feedparser,
+        # so you have to supply a BytesIO and then pass the response headers through to maximise the chances of getting
+        # the content encoding right. Gross.
         # TODO: wrap feedparser to watch out for sharp edges
-        return Feed(absolute_url=resolved_url, content=feedparser.parse(io.BytesIO(r.content)))
+        return Feed(
+            absolute_url=resolved_url,
+            content=feedparser.parse(io.BytesIO(r.content), response_headers=r.headers),
+        )
 
     # rss has preference, chosen arbitrarily 🤷
     links = [rss_link, atom_link]

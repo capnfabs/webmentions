@@ -51,10 +51,14 @@ def scan(url: str) -> None:
         for link in parse_page_find_links(article_link):
             capabilities = mentions.fetch_page_check_mention_capabilities(link)
             webmention_link = capabilities.webmention_url
+            pingback_link = capabilities.pingback_url
             if webmention_link is not None:
-                print(f'🥳 Found a webmention for {link}!', webmention_link)
-            else:
-                print(f'😢 No webmention for {link}.')
+                print(f'🥕 Found a webmention for {link}! -> "{webmention_link}"')
+            if pingback_link is not None:
+                print(f'🥬 Found a pingback for {link}! -> "{pingback_link}"')
+
+            if webmention_link is None and pingback_link is None:
+                print(f'😢 Nothing for {link}.')
 
 
 def main() -> None:

@@ -5,11 +5,15 @@ import bs4
 import requests
 
 import config
+import util
 
 
 class MentionCapabilities(NamedTuple):
     webmention_url: Optional[str]
     pingback_url: Optional[str]
+
+
+NO_CAPABILITIES = MentionCapabilities(webmention_url=None, pingback_url=None)
 
 
 def _resolve_webmention_url(
@@ -32,6 +36,23 @@ def _resolve_webmention_url(
     return None
 
 
+def _resolve_pingback_url(response_headers: typing.Dict[str, str], response_html: bs4.BeautifulSoup) -> Optional[str]:
+    # absolute link by definition
+    header_url = response_headers.get('X-Pingback')
+    if header_url:
+        assert util.is_absolute_link(header_url)
+
+    # wtf the spec here is _draconian_ and also requires the parsing of HTML with regex.
+    # I will ignore it for simplicity
+    # http://www.hixie.ch/specs/pingback/pingback
+    # TODO: make this spec-compliant
+    html_link_element = response_html.find(['link'], attrs={'rel': 'pingback'})
+    if html_link_element and html_link_element.has_attr('href'):
+        return html_link_element['href']
+
+    return None
+
+
 def fetch_page_check_mention_capabilities(url: str) -> MentionCapabilities:
     # TODO: warn that this is a page we couldn't load if we can't load it
     try:
@@ -40,17 +61,18 @@ def fetch_page_check_mention_capabilities(url: str) -> MentionCapabilities:
         r = requests.get(url, headers={'User-Agent': config.USER_AGENT})
         if not r.ok:
             print('not ok:', r.status_code, r.text[:1000])
-            return MentionCapabilities()
+            return NO_CAPABILITIES
     except IOError as e:
         print('not ok:', e)
-        return MentionCapabilities()
+        return NO_CAPABILITIES
 
     assert r.ok
     # TODO: make this lazy-parsing so that we don't load it unless we need it
     html = bs4.BeautifulSoup(r.text, features='lxml')
     webmention_link = _resolve_webmention_url(r.links, html)
+    pingback_link = _resolve_pingback_url(r.headers, html)
 
     return MentionCapabilities(
         webmention_url=webmention_link,
-        pingback_url=None,
+        pingback_url=pingback_link,
     )

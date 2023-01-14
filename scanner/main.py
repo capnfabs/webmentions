@@ -4,47 +4,15 @@ from urllib import parse
 
 import bs4
 import requests
+
+from scanner import mentions
 from scanner.feed import scan_site_for_feed, link_generator_from_feed, RssItem
+from util import is_only_fragment
 
 
 class Link(NamedTuple):
     title: str
     url: str
-
-
-def is_only_fragment(url: str) -> bool:
-    *stuff, fragment = parse.urlparse(url)
-    return bool(not any(s for s in stuff) and fragment)
-
-
-def fetch_page_check_webmention(url: str) -> None:
-    try:
-        # Note that this follows redirects by default https://requests.readthedocs.io/en/latest/user/quickstart/#redirection-and-history
-        r = requests.get(url, headers={'User-Agent': 'HECK YEAH Webmentions v0.0.1'})
-        if not r.ok:
-            print('not ok:', r.status_code, r.text[:1000])
-            return
-    except IOError as e:
-        print('not ok:', e)
-        return
-
-    assert r.ok
-    webmention_header = r.links.get('webmention')
-    if webmention_header:
-        webmention_url = webmention_header.get('url')
-        if webmention_url:
-            print(f'🥳 Found a webmention for {url}!', webmention_url)
-            return
-
-    # <link href="http://aaronpk.example/webmention-endpoint" rel="webmention" />
-    html = bs4.BeautifulSoup(r.text, features='lxml')
-    webmention_link = html.find(['link', 'a'], attrs={'rel': 'webmention'})
-    # print(html.prettify())
-    # href not present = invalid, href present but blank = valid and self
-    if webmention_link and webmention_link.has_attr('href'):
-        print(f'🥳 Found a webmention for {url}!', webmention_link['href'])
-    else:
-        print(f'😢 No webmention for {url}.')
 
 
 def parse_page_find_links(page_link: RssItem) -> Iterable[str]:
@@ -81,7 +49,12 @@ def scan(url: str) -> None:
     for article_link in link_generator_from_feed(feed):
         # assumes that every article_link is absolute, TODO assert this
         for link in parse_page_find_links(article_link):
-            fetch_page_check_webmention(link)
+            capabilities = mentions.fetch_page_check_mention_capabilities(link)
+            webmention_link = capabilities.webmention_url
+            if webmention_link is not None:
+                print(f'🥳 Found a webmention for {link}!', webmention_link)
+            else:
+                print(f'😢 No webmention for {link}.')
 
 
 def main() -> None:

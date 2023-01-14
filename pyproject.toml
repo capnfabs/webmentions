@@ -1,0 +1,19 @@
+[project]
+name = "webmentions"
+description = "toy webmentions impl"
+version = "0.1.0"
+authors = [
+    { name = "Fabian Tamp", email = "fabian@capnfabs.net" }
+]
+requires-python = "3.11.1"
+dependencies = [
+]
+
+[project.optional-dependencies]
+dev = [
+    "mypy",
+    "pytest"
+]
+
+[project.scripts]
+scanner = "scanner:main"

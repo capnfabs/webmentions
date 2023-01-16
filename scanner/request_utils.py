@@ -27,8 +27,8 @@ class WrappedResponse:
         return getattr(self._response, attr)
 
 
-def extra_spooky_monkey_patch_for_socket_security() -> None:
-    """I am sorry to have done this."""
+def extra_spooky_monkey_patch_to_block_local_traffic() -> None:
+    """Sorry / not sorry"""
     local_getaddrinfo = socket.getaddrinfo
 
     def _addrinfo_represents_global_ip(addrinfo_tuple: Any) -> bool:

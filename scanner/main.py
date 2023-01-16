@@ -7,7 +7,7 @@ import requests
 
 from scanner.feed import scan_site_for_feed, link_generator_from_feed, RssItem
 from scanner.mention_detector import fetch_page_check_mention_capabilities
-from scanner.request_utils import WrappedResponse
+from scanner.request_utils import WrappedResponse, extra_spooky_monkey_patch_for_socket_security
 from util import is_only_fragment
 
 
@@ -63,12 +63,15 @@ def scan(url: str) -> None:
 
 
 def main() -> None:
+    extra_spooky_monkey_patch_for_socket_security()
+
     parser = argparse.ArgumentParser(
         prog='Scanner',
         description='What the program does',
         epilog='Text at the bottom of help')
     parser.add_argument('--url', required=True)
     args = parser.parse_args()
+
     scan(args.url)
 
 

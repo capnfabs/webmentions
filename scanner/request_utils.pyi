@@ -11,3 +11,6 @@ class WrappedResponse(requests.Response):
     def resolve_url(self, url: str) -> str: ...
 
     _response: requests.Response
+
+
+def extra_spooky_monkey_patch_for_socket_security() -> None: ...

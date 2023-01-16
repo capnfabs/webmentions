@@ -1,4 +1,7 @@
 import functools
+import ipaddress
+import socket
+from typing import Any
 from urllib import parse
 
 import bs4
@@ -22,3 +25,25 @@ class WrappedResponse:
 
     def __getattr__(self, attr):
         return getattr(self._response, attr)
+
+
+def extra_spooky_monkey_patch_for_socket_security() -> None:
+    """I am sorry to have done this."""
+    local_getaddrinfo = socket.getaddrinfo
+
+    def _addrinfo_represents_global_ip(addrinfo_tuple: Any) -> bool:
+        (family, type, proto, canonname, sockaddr) = addrinfo_tuple
+        if family not in (socket.AF_INET, socket.AF_INET6):
+            # ipv4/v6 only, no shenanigans please
+            return False
+
+        # For IPv4, this is a 2-tuple with IP/port
+        # For IPv6, this is a 4-tuple with IP/port/flowinfo/scope_id apparently
+        ip, *_ = sockaddr
+        return ipaddress.ip_address(ip).is_global
+
+    def new_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0) -> Any:
+        results = local_getaddrinfo(host, port, family=family, type=type, proto=proto, flags=flags)
+        return [r for r in results if _addrinfo_represents_global_ip(r)]
+
+    socket.getaddrinfo = new_getaddrinfo

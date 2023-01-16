@@ -27,7 +27,6 @@ def _find_article_schema_org(html: bs4.BeautifulSoup) -> Optional[bs4.Tag]:
 
 def _find_article_semantic_html(html: bs4.BeautifulSoup) -> Optional[bs4.Tag]:
     all_articles = html.find_all('article')
-    print(all_articles)
     if len(all_articles) == 1:
         return all_articles[0]
 
@@ -44,6 +43,7 @@ def parse_page_find_links(page_link: RssItem) -> Iterable[str]:
     html = bs4.BeautifulSoup(r.text, features="lxml")
     article_body = find_article(html)
     if article_body is None:
+        # TODO(ux): report this probably
         print("Couldn't resolve article")
         return
 

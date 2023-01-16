@@ -16,7 +16,7 @@ class WrappedResponse:
 
     @functools.cached_property
     def parsed_html(self) -> bs4.BeautifulSoup:
-        # TODO: content-type check
+        # TODO(reliability): content-type check
         return bs4.BeautifulSoup(self._response.text, features='lxml')
 
     def resolve_url(self, url: str) -> str:

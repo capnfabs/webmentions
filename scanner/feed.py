@@ -53,7 +53,8 @@ def scan_site_for_feed(url: str) -> Optional[Feed]:
         resolved_url = response.resolve_url(rss_link['href'])
         r = requests.get(resolved_url)
         if not r.ok:
-            # TODO: let user know, this is an error in their site or their server is borked or something
+            # TODO(ux): let user know, this is an error in their site or their server is borked or something
+            print("Couldn't find feed")
             return None
 
         assert util.is_absolute_link(resolved_url)
@@ -63,7 +64,7 @@ def scan_site_for_feed(url: str) -> Optional[Feed]:
         # the docs say that you can pass a StringIO around a string, but it breaks a regex somewhere in feedparser,
         # so you have to supply a BytesIO and then pass the response headers through to maximise the chances of getting
         # the content encoding right. Gross.
-        # TODO: wrap feedparser to watch out for sharp edges
+        # TODO(reliability): wrap feedparser to watch out for sharp edges
         return Feed(
             absolute_url=resolved_url,
             content=feedparser.parse(io.BytesIO(r.content), response_headers=r.headers),
@@ -74,7 +75,7 @@ def scan_site_for_feed(url: str) -> Optional[Feed]:
     candidate_feeds = (fetch_feed(link) for link in links)
     chosen_feed = next(candidate_feeds)
     if not chosen_feed:
-        # TODO: alert user
+        # TODO(ux): alert user
         return None
 
     return chosen_feed

@@ -29,7 +29,7 @@ def _resolve_webmention_url(response: WrappedResponse) -> Optional[str]:
             if 'webmention' in k.split():
                 return response.resolve_url(v.get('url'))
 
-    # TODO: theoretically this only applies if the Content-Type is html
+    # TODO(spec): theoretically this only applies if the Content-Type is html
     webmention_links = response.parsed_html.find_all(['link', 'a'], attrs={'rel': 'webmention'})
     # href not present = invalid, href present but blank = valid and self
     for maybe_link in webmention_links:
@@ -49,7 +49,7 @@ def _resolve_pingback_url(response: WrappedResponse) -> Optional[str]:
     # wtf the spec here is _draconian_ and also requires the parsing of HTML with regex.
     # I will ignore it for simplicity
     # http://www.hixie.ch/specs/pingback/pingback
-    # TODO: make this spec-compliant
+    # TODO(spec): make this spec-compliant
     html_link_element = response.parsed_html.find(['link'], attrs={'rel': 'pingback'})
     if html_link_element and html_link_element.has_attr('href'):
         return html_link_element['href']
@@ -58,7 +58,7 @@ def _resolve_pingback_url(response: WrappedResponse) -> Optional[str]:
 
 
 def fetch_page_check_mention_capabilities(url: str) -> MentionCapabilities:
-    # TODO: warn that this is a page we couldn't load if we can't load it
+    # TODO(ux): warn that this is a page we couldn't load if we can't load it
     try:
         # Note that this follows redirects by default
         # See https://requests.readthedocs.io/en/latest/user/quickstart/#redirection-and-history

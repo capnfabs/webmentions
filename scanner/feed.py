@@ -1,12 +1,12 @@
 import io
 from typing import Iterable, NamedTuple, Optional
-from urllib import parse
 
 import bs4
 import feedparser  # type: ignore
 import requests
 
 import util
+from scanner.request_utils import WrappedResponse
 
 
 class Feed(NamedTuple):
@@ -41,7 +41,8 @@ def link_generator_from_feed(feed: Feed) -> Iterable[RssItem]:
 def scan_site_for_feed(url: str) -> Optional[Feed]:
     r = requests.get(url)
     assert r.ok
-    html = bs4.BeautifulSoup(r.text, features="lxml")
+    response = WrappedResponse(r)
+    html = response.parsed_html
     rss_link = html.find('link', attrs={'rel': 'alternate', 'type': 'application/rss+xml'})
     atom_link = html.find('link', attrs={'rel': 'alternate', 'type': 'application/atom+xml'})
 
@@ -49,7 +50,7 @@ def scan_site_for_feed(url: str) -> Optional[Feed]:
         if link_elem is None:
             return None
 
-        resolved_url = parse.urljoin(url, rss_link['href'])
+        resolved_url = response.resolve_url(rss_link['href'])
         r = requests.get(resolved_url)
         if not r.ok:
             # TODO: let user know, this is an error in their site or their server is borked or something

@@ -1,11 +1,11 @@
-import typing
 from typing import NamedTuple, Optional
 
-import bs4
 import requests
 
 import config
 import util
+from scanner import request_utils
+from scanner.request_utils import WrappedResponse
 
 
 class MentionCapabilities(NamedTuple):
@@ -16,29 +16,33 @@ class MentionCapabilities(NamedTuple):
 NO_CAPABILITIES = MentionCapabilities(webmention_url=None, pingback_url=None)
 
 
-def _resolve_webmention_url(
-        response_links: typing.Dict[str, typing.Dict[str, str]],
-        response_html: bs4.BeautifulSoup,
-) -> Optional[str]:
-    """Return value may be a relative link, you should canonicalize it"""
-    webmention_header = response_links.get('webmention')
+def _resolve_webmention_url(response: WrappedResponse) -> Optional[str]:
+    webmention_header = response.links.get('webmention')
     if webmention_header:
         webmention_url = webmention_header.get('url')
         if webmention_url:
-            return webmention_url
+            return response.resolve_url(webmention_url)
+    else:
+        # It's legal to pass space-separated things in the `link rel` attribute, but requests doesn't parse this
+        # correctly, so as a lower-performance workaround we iterate through each of the rel headers.
+        for k, v in response.links.items():
+            if 'webmention' in k.split():
+                return response.resolve_url(v.get('url'))
 
-    webmention_link = response_html.find(['link', 'a'], attrs={'rel': 'webmention'})
-    # print(html.prettify())
+    # TODO: theoretically this only applies if the Content-Type is html
+    webmention_links = response.parsed_html.find_all(['link', 'a'], attrs={'rel': 'webmention'})
     # href not present = invalid, href present but blank = valid and self
-    if webmention_link and webmention_link.has_attr('href'):
-        return webmention_link['href']
+    for maybe_link in webmention_links:
+        if maybe_link.has_attr('href'):
+            # The URL is relative, so we've gotta make it absolute
+            return response.resolve_url(maybe_link['href'])
 
     return None
 
 
-def _resolve_pingback_url(response_headers: typing.Dict[str, str], response_html: bs4.BeautifulSoup) -> Optional[str]:
+def _resolve_pingback_url(response: WrappedResponse) -> Optional[str]:
     # absolute link by definition
-    header_url = response_headers.get('X-Pingback')
+    header_url = response.headers.get('X-Pingback')
     if header_url:
         assert util.is_absolute_link(header_url)
 
@@ -46,7 +50,7 @@ def _resolve_pingback_url(response_headers: typing.Dict[str, str], response_html
     # I will ignore it for simplicity
     # http://www.hixie.ch/specs/pingback/pingback
     # TODO: make this spec-compliant
-    html_link_element = response_html.find(['link'], attrs={'rel': 'pingback'})
+    html_link_element = response.parsed_html.find(['link'], attrs={'rel': 'pingback'})
     if html_link_element and html_link_element.has_attr('href'):
         return html_link_element['href']
 
@@ -67,10 +71,10 @@ def fetch_page_check_mention_capabilities(url: str) -> MentionCapabilities:
         return NO_CAPABILITIES
 
     assert r.ok
-    # TODO: make this lazy-parsing so that we don't load it unless we need it
-    html = bs4.BeautifulSoup(r.text, features='lxml')
-    webmention_link = _resolve_webmention_url(r.links, html)
-    pingback_link = _resolve_pingback_url(r.headers, html)
+
+    response = request_utils.WrappedResponse(r)
+    webmention_link = _resolve_webmention_url(response)
+    pingback_link = _resolve_pingback_url(response)
 
     return MentionCapabilities(
         webmention_url=webmention_link,

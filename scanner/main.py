@@ -5,8 +5,9 @@ from urllib import parse
 import bs4
 import requests
 
-from scanner import mentions
 from scanner.feed import scan_site_for_feed, link_generator_from_feed, RssItem
+from scanner.mention_detector import fetch_page_check_mention_capabilities
+from scanner.request_utils import WrappedResponse
 from util import is_only_fragment
 
 
@@ -19,6 +20,7 @@ def parse_page_find_links(page_link: RssItem) -> Iterable[str]:
     parsed_page_link_netloc = parse.urlparse(page_link.absolute_url).netloc
     r = requests.get(page_link.absolute_url)
     assert r.ok
+    r = WrappedResponse(r)
     html = bs4.BeautifulSoup(r.text, features="lxml")
     article, = html.find_all(attrs={'itemtype': "https://schema.org/Article"})
     article_body = article.find(attrs={'itemprop': 'articleBody'})
@@ -32,24 +34,23 @@ def parse_page_find_links(page_link: RssItem) -> Iterable[str]:
         if is_only_fragment(url):
             # print(f'Skipping {url}, is only fragment')
             continue
-        abs_link = parse.urljoin(page_link.absolute_url, url)
+        abs_link = r.resolve_url(url)
         parsed_abs_link = parse.urlparse(abs_link)
         if parsed_abs_link.scheme not in ('http', 'https'):
             continue
+        # TODO: maybe move this same-host check to WrappedRequest?
         if parsed_abs_link.netloc == parsed_page_link_netloc:
             # print(f'Skipping {url}, same-origin', file=sys.stderr)
             continue
 
-        # print('outputting', abs_link)
         yield abs_link
 
 
 def scan(url: str) -> None:
     feed = scan_site_for_feed(url)
     for article_link in link_generator_from_feed(feed):
-        # assumes that every article_link is absolute, TODO assert this
         for link in parse_page_find_links(article_link):
-            capabilities = mentions.fetch_page_check_mention_capabilities(link)
+            capabilities = fetch_page_check_mention_capabilities(link)
             webmention_link = capabilities.webmention_url
             pingback_link = capabilities.pingback_url
             if webmention_link is not None:

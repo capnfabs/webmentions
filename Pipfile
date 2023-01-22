@@ -13,6 +13,9 @@ feedparser = "*"
 mypy = "*"
 types-beautifulsoup4 = "*"
 types-requests = "*"
+pytest = "*"
+requests-mock = "*"
+ipython = "*"
 
 [requires]
 python_version = "3.11"
@@ -20,3 +23,7 @@ python_version = "3.11"
 [scripts]
 # No idea why --explicit-package-bases is required and don't care enough to find out
 typecheck = "mypy . --scripts-are-modules"
+# Cursed that we need this https://stackoverflow.com/a/34140498/996592
+test = "python -m pytest"
+tests = "python -m pytest"
+exe = "python -m scanner.main"

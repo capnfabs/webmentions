@@ -6,6 +6,7 @@ import feedparser  # type: ignore
 import requests
 
 import util
+from scanner import request_utils
 from scanner.request_utils import WrappedResponse
 
 
@@ -39,7 +40,8 @@ def link_generator_from_feed(feed: Feed) -> Iterable[RssItem]:
 
 
 def scan_site_for_feed(url: str) -> Optional[Feed]:
-    r = requests.get(url)
+    with request_utils.allow_local_addresses():
+        r = requests.get(url)
     assert r.ok
     response = WrappedResponse(r)
     html = response.parsed_html

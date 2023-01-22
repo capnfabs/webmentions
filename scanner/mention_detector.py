@@ -45,6 +45,7 @@ def _resolve_pingback_url(response: WrappedResponse) -> Optional[str]:
     header_url = response.headers.get('X-Pingback')
     if header_url:
         assert util.is_absolute_link(header_url)
+        return header_url
 
     # wtf the spec here is _draconian_ and also requires the parsing of HTML with regex.
     # I will ignore it for simplicity

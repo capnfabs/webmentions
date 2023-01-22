@@ -5,6 +5,7 @@ from urllib import parse
 import bs4
 import requests
 
+from scanner import request_utils
 from scanner.feed import scan_site_for_feed, link_generator_from_feed, RssItem
 from scanner.mention_detector import fetch_page_check_mention_capabilities, NO_CAPABILITIES
 from scanner.mention_sender import send_mention, MentionCandidate
@@ -37,7 +38,8 @@ def find_article(html: bs4.BeautifulSoup) -> Optional[bs4.Tag]:
 
 def parse_page_find_links(page_link: RssItem) -> Iterable[str]:
     parsed_page_link_netloc = parse.urlparse(page_link.absolute_url).netloc
-    r = requests.get(page_link.absolute_url)
+    with request_utils.allow_local_addresses():
+        r = requests.get(page_link.absolute_url)
     assert r.ok
     r = WrappedResponse(r)
     html = bs4.BeautifulSoup(r.text, features="lxml")
@@ -50,6 +52,9 @@ def parse_page_find_links(page_link: RssItem) -> Iterable[str]:
     for link in article_body.find_all('a'):
         # TODO(ux): filter out nofollow etc
         # TODO(ux): maybe include images?
+        # TODO:(reliability): maybe cap these to url MAX_LENGTH?
+        #  See eg. https://www.baeldung.com/cs/max-url-length but there's no actual spec'd limit
+        #  AFAICT
         url = link.get('href')
         if not url:
             # Can't work with links that don't have an HREF
@@ -66,27 +71,35 @@ def parse_page_find_links(page_link: RssItem) -> Iterable[str]:
         yield abs_link
 
 
-def scan(url: str, notify: bool) -> None:
-    for mentionable in generate_webmention_candidates(url):
+def scan(url: str, notify: bool, single_page: bool) -> None:
+    for mentionable in generate_webmention_candidates(url, single_page):
         if notify:
             send_mention(mentionable)
         else:
             webmention_link = mentionable.capabilities.webmention_url
             pingback_link = mentionable.capabilities.pingback_url
             if webmention_link is not None:
-                print(f'🥕 Found a webmention for {mentionable.mentioned_url}! -> "{webmention_link}"')
+                print(
+                    f'🥕 Found a webmention for {mentionable.mentioned_url}! -> "{webmention_link}"'
+                )
             if pingback_link is not None:
                 print(f'🥬 Found a pingback for {mentionable.mentioned_url}! -> "{pingback_link}"')
 
 
-def generate_webmention_candidates(url: str) -> Iterable[MentionCandidate]:
-    feed = scan_site_for_feed(url)
-    for article_link in link_generator_from_feed(feed):
+def generate_webmention_candidates(url: str, single_page: bool) -> Iterable[MentionCandidate]:
+    if single_page:
+        articles = [RssItem(title='single page', absolute_url=url)]
+    else:
+        feed = scan_site_for_feed(url)
+        articles = link_generator_from_feed(feed)
+
+    for article_link in articles:
+        print(f'checking {article_link}')
         for link in parse_page_find_links(article_link):
             capabilities = fetch_page_check_mention_capabilities(link)
             if capabilities != NO_CAPABILITIES:
                 yield MentionCandidate(
-                    mentioner_url=article_link,
+                    mentioner_url=article_link.absolute_url,
                     mentioned_url=link,
                     capabilities=capabilities,
                 )
@@ -98,12 +111,14 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         prog='Scanner',
         description='What the program does',
-        epilog='Text at the bottom of help')
+        epilog='Text at the bottom of help'
+    )
     parser.add_argument('--url', required=True)
     parser.add_argument('--real', action='store_true')
+    parser.add_argument('--single-page', action='store_true')
     args = parser.parse_args()
 
-    scan(args.url, args.real)
+    scan(args.url, args.real, args.single_page)
 
 
 if __name__ == '__main__':

@@ -44,7 +44,7 @@ def send_mention(mention_candidate: MentionCandidate) -> None:
         _send_pingback(mention_candidate)
 
 
-def _send_pingback(mention_candidate: MentionCandidate) -> str:
+def _send_pingback(mention_candidate: MentionCandidate) -> None:
     pingback_url = mention_candidate.capabilities.pingback_url
     assert pingback_url
 
@@ -56,16 +56,16 @@ def _send_pingback(mention_candidate: MentionCandidate) -> str:
     assert r.ok
     print(r.text)
     r = request_utils.WrappedResponse(r)
-    # optional return value, used for debug
-    result = r.parsed_xml.select('methodResponse>params>param:first-child>value>string')
-    if result:
-        return result[0].text or ''
     fault_struct = r.parsed_xml.select('methodResponse>fault>value>struct')
     if fault_struct:
         # there should be at most one fault_struct
         _handle_fault(fault_struct[0])
-    # Didn't get an ack or a reject
-    raise INDETERMINATE_ERROR
+
+    # optional return value, used for debug
+    result = r.parsed_xml.select('methodResponse>params>param:first-child>value>string')
+    if result:
+        # log result? this is optional though
+        print(result[0].text or '')
 
 
 def _handle_fault(fault_struct: bs4.Tag) -> NoReturn:

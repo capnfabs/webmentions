@@ -19,6 +19,7 @@ requests-mock = "*"
 ipython = "*"
 
 [requires]
+# Keep this in sync with .python-version and .github/workflows/ci.yaml
 python_version = "3.11"
 
 [scripts]

@@ -5,6 +5,7 @@ import requests
 import config
 import util
 from scanner import request_utils
+from scanner.bs4_utils import tag
 from scanner.request_utils import WrappedResponse
 
 
@@ -52,8 +53,12 @@ def _resolve_pingback_url(response: WrappedResponse) -> Optional[str]:
     # http://www.hixie.ch/specs/pingback/pingback
     # TODO(spec): make this spec-compliant
     html_link_element = response.parsed_html.find(['link'], attrs={'rel': 'pingback'})
-    if html_link_element and html_link_element.has_attr('href'):
-        return html_link_element['href']
+    html_link_element = tag(html_link_element)
+    if html_link_element:
+        hrefs = html_link_element.get_attribute_list('href')
+        if hrefs:
+            # could be specified multiple times, pick the first
+            return hrefs[0]
 
     return None
 

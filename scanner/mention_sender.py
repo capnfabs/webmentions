@@ -5,6 +5,7 @@ import requests
 from lxml import etree
 
 from scanner import request_utils
+from scanner.bs4_utils import tag
 from scanner.mention_detector import MentionCapabilities
 
 
@@ -73,21 +74,21 @@ def _handle_fault(fault_struct: bs4.Tag) -> NoReturn:
     if not members:
         raise INDETERMINATE_ERROR
 
-    def member_matches(member, name) -> bool:
+    def member_matches(member: bs4.Tag, name: str) -> bool:
         member_name = member.find('name')
-        return member_name and member_name.text == name
+        return bool(member_name and member_name.text == name)
 
     fault_code = next(member for member in members if member_matches(member, 'faultCode'))
     fault_string = next(member for member in members if member_matches(member, 'faultString'))
     print(fault_code)
     print(fault_string)
 
-    def _safe_navigate(member, *path) -> Optional[str]:
+    def _safe_navigate(member: Optional[bs4.Tag], *path: str) -> Optional[str]:
         """Grabs a value"""
         for p in path:
             if not member:
                 return None
-            member = member.find(p)
+            member = tag(member.find(p))
 
         if not member:
             return None
@@ -142,7 +143,7 @@ def _build_pingback_xml(mention_candidate: MentionCandidate) -> str:
     ).decode('utf-8')
 
 
-def _build_param(value_abs_url: str) -> etree.Element:
+def _build_param(value_abs_url: str) -> etree._Element:
     source_param = etree.Element('param')
     value = etree.Element('value')
     str_value = etree.Element('string')

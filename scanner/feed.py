@@ -7,6 +7,7 @@ import requests
 
 import util
 from scanner import request_utils
+from scanner.bs4_utils import tag
 from scanner.request_utils import WrappedResponse
 
 
@@ -45,14 +46,18 @@ def scan_site_for_feed(url: str) -> Optional[Feed]:
     assert r.ok
     response = WrappedResponse(r)
     html = response.parsed_html
-    rss_link = html.find('link', attrs={'rel': 'alternate', 'type': 'application/rss+xml'})
-    atom_link = html.find('link', attrs={'rel': 'alternate', 'type': 'application/atom+xml'})
+    rss_link = tag(html.find('link', attrs={'rel': 'alternate', 'type': 'application/rss+xml'}))
+    atom_link = tag(html.find('link', attrs={'rel': 'alternate', 'type': 'application/atom+xml'}))
 
     def fetch_feed(link_elem: Optional[bs4.element.Tag]) -> Optional[Feed]:
         if link_elem is None:
             return None
 
-        resolved_url = response.resolve_url(rss_link['href'])
+        hrefs = link_elem.get_attribute_list('href')
+        if not hrefs:
+            return None
+
+        resolved_url = response.resolve_url(hrefs[0])
         r = requests.get(resolved_url)
         if not r.ok:
             # TODO(ux): let user know, this is an error in their site or their server is borked or something

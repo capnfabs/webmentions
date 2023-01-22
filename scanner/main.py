@@ -6,6 +6,7 @@ import bs4
 import requests
 
 from scanner import request_utils
+from scanner.bs4_utils import tag
 from scanner.feed import scan_site_for_feed, link_generator_from_feed, RssItem
 from scanner.mention_detector import fetch_page_check_mention_capabilities, NO_CAPABILITIES
 from scanner.mention_sender import send_mention, MentionCandidate
@@ -20,16 +21,18 @@ class Link(NamedTuple):
 
 def _find_article_schema_org(html: bs4.BeautifulSoup) -> Optional[bs4.Tag]:
     schema_org_article = html.find_all(attrs={'itemtype': "https://schema.org/Article"})
-    if not schema_org_article:
+    if not schema_org_article or len(schema_org_article) > 1:
         return None
-    article_body = schema_org_article.find(attrs={'itemprop': 'articleBody'})
+    article_body = tag(schema_org_article[0].find(attrs={'itemprop': 'articleBody'}))
     return article_body
 
 
 def _find_article_semantic_html(html: bs4.BeautifulSoup) -> Optional[bs4.Tag]:
     all_articles = html.find_all('article')
     if len(all_articles) == 1:
-        return all_articles[0]
+        return tag(all_articles[0])
+
+    return None
 
 
 def find_article(html: bs4.BeautifulSoup) -> Optional[bs4.Tag]:
@@ -88,9 +91,13 @@ def scan(url: str, notify: bool, single_page: bool) -> None:
 
 def generate_webmention_candidates(url: str, single_page: bool) -> Iterable[MentionCandidate]:
     if single_page:
-        articles = [RssItem(title='single page', absolute_url=url)]
+        articles: Iterable[RssItem] = [RssItem(title='single page', absolute_url=url)]
     else:
         feed = scan_site_for_feed(url)
+        if not feed:
+            # TODO(ux): print error, couldn't find feed
+            return
+
         articles = link_generator_from_feed(feed)
 
     for article_link in articles:

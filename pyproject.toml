@@ -12,6 +12,7 @@ requests = "*"
 beautifulsoup4 = "*"
 lxml = "*"
 feedparser = "*"
+sqlalchemy = "2.0.0rc3"
 
 [tool.poetry.group.dev]
 optional = true

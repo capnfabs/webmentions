@@ -5,12 +5,17 @@ from urllib import parse
 import bs4
 import requests
 
+from webmentions import util, db
+from webmentions.db import models, maybe_init_db
 from webmentions.scanner import request_utils
 from webmentions.scanner.bs4_utils import tag
+from webmentions.scanner.errors import NoFeedException
 from webmentions.scanner.feed import scan_site_for_feed, link_generator_from_feed, RssItem
-from webmentions.scanner.mention_detector import fetch_page_check_mention_capabilities, NO_CAPABILITIES
+from webmentions.scanner.mention_detector import fetch_page_check_mention_capabilities, \
+    NO_CAPABILITIES
 from webmentions.scanner.mention_sender import send_mention, MentionCandidate
-from webmentions.scanner.request_utils import WrappedResponse, extra_spooky_monkey_patch_to_block_local_traffic
+from webmentions.scanner.request_utils import WrappedResponse, \
+    extra_spooky_monkey_patch_to_block_local_traffic
 from webmentions.util import is_only_fragment
 
 
@@ -35,18 +40,18 @@ def _find_article_semantic_html(html: bs4.BeautifulSoup) -> Optional[bs4.Tag]:
     return None
 
 
-def find_article(html: bs4.BeautifulSoup) -> Optional[bs4.Tag]:
+def _find_article(html: bs4.BeautifulSoup) -> Optional[bs4.Tag]:
     return _find_article_schema_org(html) or _find_article_semantic_html(html)
 
 
-def parse_page_find_links(page_link: RssItem) -> Iterable[str]:
+def _parse_page_find_links(page_link: RssItem) -> Iterable[str]:
     parsed_page_link_netloc = parse.urlparse(page_link.absolute_url).netloc
     with request_utils.allow_local_addresses():
         r = requests.get(page_link.absolute_url)
     assert r.ok
     r = WrappedResponse(r)
     html = bs4.BeautifulSoup(r.text, features="lxml")
-    article_body = find_article(html)
+    article_body = _find_article(html)
     if article_body is None:
         # TODO(ux): report this probably
         print("Couldn't resolve article")
@@ -74,8 +79,8 @@ def parse_page_find_links(page_link: RssItem) -> Iterable[str]:
         yield abs_link
 
 
-def scan(url: str, notify: bool, single_page: bool) -> None:
-    for mentionable in generate_webmention_candidates(url, single_page):
+def _scan(url: str, *, notify: bool, single_page: bool) -> None:
+    for mentionable in _generate_webmention_candidates(url, single_page):
         if notify:
             send_mention(mentionable)
         else:
@@ -89,20 +94,19 @@ def scan(url: str, notify: bool, single_page: bool) -> None:
                 print(f'🥬 Found a pingback for {mentionable.mentioned_url}! -> "{pingback_link}"')
 
 
-def generate_webmention_candidates(url: str, single_page: bool) -> Iterable[MentionCandidate]:
+def _generate_webmention_candidates(url: str, single_page: bool) -> Iterable[MentionCandidate]:
     if single_page:
         articles: Iterable[RssItem] = [RssItem(title='single page', absolute_url=url)]
     else:
         feed = scan_site_for_feed(url)
         if not feed:
-            # TODO(ux): print error, couldn't find feed
-            return
+            raise NoFeedException(url)
 
         articles = link_generator_from_feed(feed)
 
     for article_link in articles:
         print(f'checking {article_link}')
-        for link in parse_page_find_links(article_link):
+        for link in _parse_page_find_links(article_link):
             capabilities = fetch_page_check_mention_capabilities(link)
             if capabilities != NO_CAPABILITIES:
                 yield MentionCandidate(
@@ -112,20 +116,72 @@ def generate_webmention_candidates(url: str, single_page: bool) -> Iterable[Ment
                 )
 
 
+def _scan_saved(notify: bool) -> None:
+    pass
+
+
+def _register(url: str) -> None:
+    assert util.is_absolute_link(url)
+
+    feed = scan_site_for_feed(url)
+    if not feed:
+        raise NoFeedException(url)
+
+    # TODO: validate that the feed is valid, that it contains URLs etc.
+    feed_model = models.DiscoveryFeed(
+        submitted_url=url,
+        discovered_feed=feed.absolute_url,
+        feed_type_when_discovered=feed.content.version,
+    )
+
+    with db.db_session() as session:
+        session.add(feed_model)
+
+    print('Added feed to DB')
+
+
 def main() -> None:
     extra_spooky_monkey_patch_to_block_local_traffic()
+    maybe_init_db()
 
     parser = argparse.ArgumentParser(
         prog='Scanner',
         description='What the program does',
         epilog='Text at the bottom of help'
     )
-    parser.add_argument('--url', required=True)
+    # scans a whole site, finds RSS feed from provided URL and does webmention discovery from there.
+    # doesn't deduplicate or anything
+    parser.add_argument('--site')
+
+    # scans a single page and sends webmentions. Doesn't attempt to dedupe previously sent mentions.
+    parser.add_argument('--page')
+
+    # looks up a feed, saves it in the database. You're then able to run without any args to have
+    # this scan for new webmentions targets.
+    parser.add_argument('--register')
+
+    # Actually send the webmentions. Like the opposite of a dry_run flag.
     parser.add_argument('--real', action='store_true')
-    parser.add_argument('--single-page', action='store_true')
     args = parser.parse_args()
 
-    scan(args.url, args.real, args.single_page)
+    all_args = [args.site, args.page, args.register]
+    count_mode_args = len([arg for arg in all_args if arg])
+    if count_mode_args > 1:
+        # TODO: make this user facing
+        raise Exception("Only one of `site`, `page` and `register` can be supplied.")
+    elif count_mode_args == 1:
+        if args.site:
+            _scan(args.site, notify=args.real, single_page=False)
+        elif args.page:
+            _scan(args.page, notify=args.real, single_page=True)
+        elif args.register:
+            _register(args.register)
+        else:
+            # should be unreachable
+            assert False
+    else:
+        # no args, produce results for saved entries
+        _scan_saved(notify=args.real)
 
 
 if __name__ == '__main__':

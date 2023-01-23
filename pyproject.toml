@@ -1,0 +1,44 @@
+[tool.poetry]
+name = "webmentions"
+version = "0.1.0"
+description = ""
+authors = ["Fabian Tamp <fabian.tamp@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+requests = "*"
+beautifulsoup4 = "*"
+lxml = "*"
+feedparser = "*"
+
+[tool.poetry.group.dev]
+optional = true
+
+[tool.poetry.group.dev.dependencies]
+mypy = "*"
+types-beautifulsoup4 = "*"
+types-requests = "*"
+lxml-stubs = "*"
+pytest = "*"
+requests-mock = "*"
+ipython = "*"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.mypy]
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+warn_unused_ignores = true
+warn_return_any = true
+warn_redundant_casts = true
+warn_unused_configs = true
+
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+# This'll get annoying for tests
+disallow_untyped_defs = false

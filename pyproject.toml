@@ -6,6 +6,7 @@ authors = ["Fabian Tamp <fabian.tamp@gmail.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
+# Keep in sync with .github/workflows/ci.yaml
 python = "^3.11"
 requests = "*"
 beautifulsoup4 = "*"

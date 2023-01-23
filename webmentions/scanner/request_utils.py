@@ -1,4 +1,3 @@
-import contextlib
 import functools
 import ipaddress
 import socket
@@ -8,6 +7,8 @@ from urllib import parse
 
 import bs4
 import requests
+
+from webmentions import config
 
 
 class WrappedResponse:
@@ -39,20 +40,6 @@ def _init_threadlocal():
     registry.__dict__.setdefault('unsafe_requests', False)
     return registry
 
-
-_spooky_threadlocal_data = _init_threadlocal()
-
-
-@contextlib.contextmanager
-def allow_local_addresses():
-    old_spooky = _spooky_threadlocal_data.unsafe_requests
-    _spooky_threadlocal_data.unsafe_requests = True
-    try:
-        yield
-    finally:
-        _spooky_threadlocal_data.unsafe_requests = old_spooky
-
-
 def extra_spooky_monkey_patch_to_block_local_traffic() -> None:
     """Sorry / not sorry"""
     local_getaddrinfo = socket.getaddrinfo
@@ -70,7 +57,7 @@ def extra_spooky_monkey_patch_to_block_local_traffic() -> None:
 
     def new_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0) -> Any:
         results = local_getaddrinfo(host, port, family=family, type=type, proto=proto, flags=flags)
-        if _spooky_threadlocal_data.unsafe_requests:
+        if config.spooky.unsafe_requests:
             return results
         else:
             return [r for r in results if _addrinfo_represents_global_ip(r)]

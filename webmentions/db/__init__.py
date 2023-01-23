@@ -25,3 +25,7 @@ def db_session() -> Generator[Session, None, None]:
         # ok to catch BaseException because we're re-raising, just using this for cleanup on failure
         session.rollback()
         raise
+    finally:
+        # prevent a handful of idiosyncratic bugs where we could be opening DB transactions
+        # without realising it.
+        session.close()

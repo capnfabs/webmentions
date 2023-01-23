@@ -7,9 +7,9 @@ import bs4
 import requests
 from sqlalchemy.orm import Session
 
-from webmentions import util, db
+from webmentions import util, db, config
 from webmentions.db import models, maybe_init_db
-from webmentions.db.models import DiscoveryFeed
+from webmentions.db.models import DiscoveryFeed, FeedTask
 from webmentions.feed_queue import FeedQueue
 from webmentions.feed_queue.in_process import InProcessQueue
 from webmentions.scanner import request_utils
@@ -21,7 +21,7 @@ from webmentions.scanner.mention_detector import fetch_page_check_mention_capabi
 from webmentions.scanner.mention_sender import send_mention, MentionCandidate
 from webmentions.scanner.request_utils import WrappedResponse, \
     extra_spooky_monkey_patch_to_block_local_traffic
-from webmentions.util import is_only_fragment
+from webmentions.util import is_only_fragment, now, HOUR
 
 
 class Link(NamedTuple):
@@ -51,7 +51,7 @@ def _find_article(html: bs4.BeautifulSoup) -> Optional[bs4.Tag]:
 
 def _parse_page_find_links(page_link: RssItem) -> Iterable[str]:
     parsed_page_link_netloc = parse.urlparse(page_link.absolute_url).netloc
-    with request_utils.allow_local_addresses():
+    with config.spooky.allow_local_addresses():
         r = requests.get(page_link.absolute_url)
     assert r.ok
     r = WrappedResponse(r)
@@ -130,7 +130,9 @@ def _scan_saved(notify: bool) -> None:
     try:
         # Load all saved items
         with db.db_session() as session:
-            feeds = session.query(DiscoveryFeed).all()
+            session: Session
+            feeds = session.query(FeedTask).all()
+            session.expunge_all()
         for feed in feeds:
             print(f'Checking feed {feed}...')
             feed_queue.enqueue_feed(feed)
@@ -145,7 +147,7 @@ def _register(url: str) -> None:
     if not feed:
         raise NoFeedException(url)
 
-    # TODO: validate that the feed is valid, that it contains URLs etc.
+    # TODO(ux): validate that the feed is valid, that it contains URLs etc.
     feed_model = models.DiscoveryFeed(
         submitted_url=url,
         discovered_feed=feed.absolute_url,
@@ -154,6 +156,21 @@ def _register(url: str) -> None:
 
     with db.db_session() as session:
         session.add(feed_model)
+        session.flush()
+        session: Session
+        task: Optional[FeedTask] = (
+            session
+            .query(FeedTask)
+            .filter(FeedTask.feed_url == feed.absolute_url)
+            .one_or_none()
+        )
+        # Pretty sure there are race conditions that can cause this to fail because of
+        # transaction isolation, but it's very difficult to do something about them because we
+        # don't have 'on-conflict' support in SQLAlchemy ORM.
+        if task:
+            task.next_scan = now()
+        else:
+            session.add(FeedTask(feed_url=feed.absolute_url, next_scan=now()))
 
     print('Added feed to DB')
 

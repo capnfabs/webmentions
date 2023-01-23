@@ -1,17 +1,41 @@
 import queue
 import threading
 
-from webmentions.db.models import DiscoveryFeed
+from webmentions import db
+from webmentions.db.models import FeedTask, Article
 from webmentions.feed_queue import FeedQueue
+from webmentions.scanner.feed import link_generator_from_feed, feed_from_url
 
 
-def _process_feed(feed: DiscoveryFeed) -> None:
-    print(
-        f'Checking {feed.discovered_feed}, which was a {feed.feed_type_when_discovered} '
-        f'last time we looked at it'
-    )
+def _process_feed(feed: FeedTask) -> None:
+    # TODO(tech debt): move this to a package where it belongs, this is business logic, not queue
+    #  logic
+    print(f'Checking {feed.feed_url}, we checked it last on {feed.last_scan_completed}')
 
-    # articles = link_generator_from_feed(feed)
+    feed = feed_from_url(feed.feed_url)
+    assert feed
+    articles = list(link_generator_from_feed(feed))
+    all_article_urls = [article.absolute_url for article in articles]
+    # TODO(reliability): exclude articles that are older than feed.last_reported_update_time
+    with db.db_session() as session:
+        session: db.Session
+        # possible to get all articles that are no longer in the feed with something like this
+        # session.query(Article).filter_by(not Article.url.in_(all_article_urls)).all()
+        seen_articles = session.query(Article.url).filter(
+            Article.url.in_(
+                all_article_urls
+            )
+        ).all()
+        seen_articles = set(seen_articles)
+        print('Seen articles:', seen_articles)
+        retain_articles = [
+            article for article in articles
+            if article.absolute_url not in seen_articles
+        ]
+        # TODO: add GUID
+        article_orm = [Article(url=a.absolute_url) for a in retain_articles]
+        session.add_all(article_orm)
+
 
 
 def _queue_thread(feed_queue: queue.Queue) -> None:
@@ -40,5 +64,5 @@ class InProcessQueue(FeedQueue):
         self._queue.put(None)
         self._thread.join()
 
-    def enqueue_feed(self, feed: DiscoveryFeed) -> None:
+    def enqueue_feed(self, feed: FeedTask) -> None:
         self._queue.put(feed)

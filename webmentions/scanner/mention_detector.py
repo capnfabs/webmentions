@@ -2,11 +2,10 @@ from typing import NamedTuple, Optional
 
 import requests
 
-import config
-import util
-from scanner import request_utils
-from scanner.bs4_utils import tag
-from scanner.request_utils import WrappedResponse
+from webmentions import config, util
+from webmentions.scanner import request_utils
+from webmentions.scanner.bs4_utils import tag
+from webmentions.scanner.request_utils import WrappedResponse
 
 
 class MentionCapabilities(NamedTuple):

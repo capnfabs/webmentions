@@ -5,13 +5,13 @@ from urllib import parse
 import bs4
 import requests
 
-from scanner import request_utils
-from scanner.bs4_utils import tag
-from scanner.feed import scan_site_for_feed, link_generator_from_feed, RssItem
-from scanner.mention_detector import fetch_page_check_mention_capabilities, NO_CAPABILITIES
-from scanner.mention_sender import send_mention, MentionCandidate
-from scanner.request_utils import WrappedResponse, extra_spooky_monkey_patch_to_block_local_traffic
-from util import is_only_fragment
+from webmentions.scanner import request_utils
+from webmentions.scanner.bs4_utils import tag
+from webmentions.scanner.feed import scan_site_for_feed, link_generator_from_feed, RssItem
+from webmentions.scanner.mention_detector import fetch_page_check_mention_capabilities, NO_CAPABILITIES
+from webmentions.scanner.mention_sender import send_mention, MentionCandidate
+from webmentions.scanner.request_utils import WrappedResponse, extra_spooky_monkey_patch_to_block_local_traffic
+from webmentions.util import is_only_fragment
 
 
 class Link(NamedTuple):

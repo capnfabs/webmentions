@@ -5,10 +5,9 @@ import bs4
 import feedparser  # type: ignore
 import requests
 
-import util
-from scanner import request_utils
-from scanner.bs4_utils import tag
-from scanner.request_utils import WrappedResponse
+from webmentions import util
+from webmentions.scanner import request_utils
+from webmentions.scanner.bs4_utils import tag
 
 
 class Feed(NamedTuple):
@@ -44,7 +43,7 @@ def scan_site_for_feed(url: str) -> Optional[Feed]:
     with request_utils.allow_local_addresses():
         r = requests.get(url)
     assert r.ok
-    response = WrappedResponse(r)
+    response = request_utils.WrappedResponse(r)
     html = response.parsed_html
     rss_link = tag(html.find('link', attrs={'rel': 'alternate', 'type': 'application/rss+xml'}))
     atom_link = tag(html.find('link', attrs={'rel': 'alternate', 'type': 'application/atom+xml'}))

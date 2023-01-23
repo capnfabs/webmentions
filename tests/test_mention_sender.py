@@ -4,9 +4,9 @@ from typing import ContextManager
 
 import requests_mock
 
-from scanner import mention_sender
-from scanner.mention_detector import MentionCapabilities
-from scanner.mention_sender import MentionCandidate
+from webmentions.scanner import mention_sender
+from webmentions.scanner.mention_detector import MentionCapabilities
+from webmentions.scanner.mention_sender import MentionCandidate
 
 
 class TestMentionSender(unittest.TestCase):

@@ -6,14 +6,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+      - name: Install poetry
+        run: pipx install poetry
       - uses: actions/setup-python@v4
         with:
-          python-version-file: '.python-version'
-          cache: 'pipenv'
-      - name: Install pipenv
-        run: curl https://raw.githubusercontent.com/pypa/pipenv/master/get-pipenv.py | python
-      - run: pipenv install --dev
+          # Keep in sync with pyproject.toml
+          python-version: '3.11'
+          cache: 'poetry'
+      - run: poetry install --with dev
       - name: Typecheck
-        run: pipenv run typecheck
+        run: tasks/typecheck
       - name: Run tests
-        run: pipenv run tests
+        run: tasks/test

@@ -4,9 +4,9 @@ import bs4
 import requests
 from lxml import etree
 
-from scanner import request_utils
-from scanner.bs4_utils import tag
-from scanner.mention_detector import MentionCapabilities
+from webmentions.scanner import request_utils
+from webmentions.scanner.bs4_utils import tag
+from webmentions.scanner.mention_detector import MentionCapabilities
 
 
 class MentionCandidate(NamedTuple):

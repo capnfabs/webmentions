@@ -1,12 +1,17 @@
 import argparse
-from typing import Iterable, NamedTuple, Optional
+import multiprocessing
+from typing import Iterable, NamedTuple, Optional, Protocol
 from urllib import parse
 
 import bs4
 import requests
+from sqlalchemy.orm import Session
 
 from webmentions import util, db
 from webmentions.db import models, maybe_init_db
+from webmentions.db.models import DiscoveryFeed
+from webmentions.feed_queue import FeedQueue
+from webmentions.feed_queue.in_process import InProcessQueue
 from webmentions.scanner import request_utils
 from webmentions.scanner.bs4_utils import tag
 from webmentions.scanner.errors import NoFeedException
@@ -116,8 +121,21 @@ def _generate_webmention_candidates(url: str, single_page: bool) -> Iterable[Men
                 )
 
 
+class ArticleQueue(Protocol):
+    def enqueue_article(self) -> None: ...
+
+
 def _scan_saved(notify: bool) -> None:
-    pass
+    feed_queue: FeedQueue = InProcessQueue()
+    try:
+        # Load all saved items
+        with db.db_session() as session:
+            feeds = session.query(DiscoveryFeed).all()
+        for feed in feeds:
+            print(f'Checking feed {feed}...')
+            feed_queue.enqueue_feed(feed)
+    finally:
+        feed_queue.close()
 
 
 def _register(url: str) -> None:

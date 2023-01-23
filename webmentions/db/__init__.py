@@ -1,5 +1,5 @@
 import contextlib
-from typing import Iterable, Iterator
+from typing import Generator
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
@@ -16,7 +16,7 @@ def maybe_init_db() -> None:
 
 
 @contextlib.contextmanager
-def db_session() -> Iterator[Session]:
+def db_session() -> Generator[Session, None, None]:
     session = Session(engine)
     try:
         yield session

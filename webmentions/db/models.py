@@ -32,8 +32,10 @@ class DiscoveryFeed(Base):
     """An article discovery feed"""
     __tablename__ = "discovery_feeds"
 
-    # TODO(tech debt): maybe move this into the Base class
+    # TODO(tech debt): move this into the Base class
     id: Mapped[str] = mapped_column(primary_key=True, default=prefixed_id('feed'))
+    # We could theoretically end up with multiple users submitting the same thing and would need
+    # to handle that somehow.
     submitted_url: Mapped[str] = mapped_column(Text, nullable=False)
     discovered_feed: Mapped[str] = mapped_column(Text, nullable=False)
     # See e.g. https://feedparser.readthedocs.io/en/latest/reference-version.html

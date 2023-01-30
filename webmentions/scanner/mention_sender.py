@@ -4,6 +4,7 @@ import bs4
 import requests
 from lxml import etree
 
+from webmentions.scanner.errors import PermanentError, TransientError
 from webmentions.util.bs4_utils import tag
 from webmentions.scanner.mention_detector import MentionCapabilities
 from webmentions import log
@@ -48,6 +49,35 @@ def send_mention(mention_candidate: MentionCandidate) -> None:
         _send_pingback(mention_candidate)
 
 
+_transient_errors = {
+    0x0000,  # generic fault code, interpret as transient
+    0x0010,
+    # source URI does not exist. We could fetch it even if the remote service can't, so this
+    # is probably transient
+    0x0031,  # access denied
+    0x0032,  # bad upstream
+}
+
+_permanent_errors = {
+    0x0011,  # source URI does not contain a link to the target URI
+    0x0020,  # target URI does not exist
+    0x0021,  # target URI can't be used as a target
+}
+
+_not_actually_errors = {
+    0x0030,  # duplicate / already registered
+}
+
+
+def _standardize_pingback_error(ex: 'RemoteError') -> Optional[Exception]:
+    if ex.code in _permanent_errors:
+        return PermanentError(ex)
+    if ex.code in _not_actually_errors:
+        return None
+
+    return TransientError(ex)
+
+
 def _send_pingback(mention_candidate: MentionCandidate) -> None:
     pingback_url = mention_candidate.capabilities.pingback_url
     assert pingback_url
@@ -62,7 +92,13 @@ def _send_pingback(mention_candidate: MentionCandidate) -> None:
     fault_struct = r.parsed_xml.select('methodResponse>fault>value>struct')
     if fault_struct:
         # there should be at most one fault_struct
-        _handle_pingback_fault(fault_struct[0])
+        fault_struct = fault_struct[0]
+        try:
+            _parse_and_raise_pingback_fault(fault_struct)
+        except RemoteError as ex:
+            standard_error = _standardize_pingback_error(ex)
+            if standard_error:
+                raise standard_error
 
     _log.info(f"Sent pingback successfully.")
 
@@ -74,7 +110,7 @@ def _send_pingback(mention_candidate: MentionCandidate) -> None:
             _log.info(f"Got pingback response: {result_text:1000}")
 
 
-def _handle_pingback_fault(fault_struct: bs4.Tag) -> NoReturn:
+def _parse_and_raise_pingback_fault(fault_struct: bs4.Tag) -> NoReturn:
     members = fault_struct.find_all('member')
     if not members:
         raise INDETERMINATE_ERROR
@@ -118,7 +154,6 @@ class RemoteError(Exception):
     def __init__(self, code: int, message: str) -> None:
         super().__init__(f'{code}: {message}')
 
-        # Now for your custom code...
         self.code = code
         self.message = message
 

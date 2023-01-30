@@ -3,9 +3,8 @@ from typing import NamedTuple, Optional
 import requests
 
 from webmentions import config, util
-from webmentions.scanner import request_utils
-from webmentions.scanner.bs4_utils import tag
-from webmentions.scanner.request_utils import WrappedResponse
+from webmentions.util.bs4_utils import tag
+from webmentions.util.request_utils import WrappedResponse
 
 
 class MentionCapabilities(NamedTuple):
@@ -44,7 +43,7 @@ def _resolve_pingback_url(response: WrappedResponse) -> Optional[str]:
     # absolute link by definition
     header_url = response.headers.get('X-Pingback')
     if header_url:
-        assert util.is_absolute_link(header_url)
+        assert util.url.is_absolute_link(header_url)
         return header_url
 
     # wtf the spec here is _draconian_ and also requires the parsing of HTML with regex.
@@ -77,7 +76,7 @@ def fetch_page_check_mention_capabilities(url: str) -> MentionCapabilities:
 
     assert r.ok
 
-    response = request_utils.WrappedResponse(r)
+    response = WrappedResponse(r)
     webmention_link = _resolve_webmention_url(response)
     pingback_link = _resolve_pingback_url(response)
 

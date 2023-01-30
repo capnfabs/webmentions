@@ -6,8 +6,9 @@ import feedparser  # type: ignore
 import requests
 
 from webmentions import util, config
-from webmentions.scanner import request_utils
-from webmentions.scanner.bs4_utils import tag
+from webmentions.util.bs4_utils import tag
+from webmentions.util.request_utils import WrappedResponse
+from webmentions.util.url import is_absolute_link
 
 
 class Feed(NamedTuple):
@@ -28,10 +29,11 @@ def link_generator_from_feed(feed: Feed) -> Iterable[RssItem]:
         # https://feedparser.readthedocs.io/en/latest/reference-entry-link.html
         link = item.get('link')
         if not link:
-            # Doesn't make sense to handle this if there's no link (we're gonna send a mention based on this link).
+            # Doesn't make sense to handle this if there's no link (we're gonna send a mention based
+            # on this link).
             # TODO(ux): report this to user
             continue
-        if not util.is_absolute_link(link):
+        if not is_absolute_link(link):
             # We can probably handle these gracefully eventually, but not yet.
             # TODO(ux): handle non-absolute URLs gracefully
             continue
@@ -40,7 +42,7 @@ def link_generator_from_feed(feed: Feed) -> Iterable[RssItem]:
         # https://www.rssboard.org/rss-draft-1#element-channel-item
         title = item.get('title', link)
 
-        assert util.is_absolute_link(link)
+        assert is_absolute_link(link)
         yield RssItem(title=title, absolute_url=link, guid=item.get('guid'))
 
 
@@ -51,7 +53,7 @@ def feed_from_url(resolved_url: str) -> Optional[Feed]:
         #  something. This would be better if it raised.
         print("Couldn't find feed")
         return None
-    assert util.is_absolute_link(resolved_url)
+    assert is_absolute_link(resolved_url)
     # don't need HTML sanitisation because we're not sticking it in a website or anything
     # wrapped in BytesIO because as per docs, untrusted strings can trigger filesystem access (!?)
     # It is cursed; I do not like it one bit.
@@ -71,7 +73,7 @@ def scan_site_for_feed(url: str) -> Optional[Feed]:
     with config.spooky.allow_local_addresses():
         r = requests.get(url)
     assert r.ok
-    response = request_utils.WrappedResponse(r)
+    response = WrappedResponse(r)
     html = response.parsed_html
     rss_link = tag(html.find('link', attrs={'rel': 'alternate', 'type': 'application/rss+xml'}))
     atom_link = tag(html.find('link', attrs={'rel': 'alternate', 'type': 'application/atom+xml'}))

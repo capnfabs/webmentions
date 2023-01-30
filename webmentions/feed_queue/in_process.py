@@ -1,6 +1,6 @@
 from webmentions import db
 from webmentions.db.models import FeedTask, Article
-from webmentions import queue_utils
+from webmentions.util import aqueue
 from webmentions.scanner.feed import link_generator_from_feed, feed_from_url
 from webmentions import log
 
@@ -40,6 +40,6 @@ def _process_feed(feed_task: FeedTask) -> None:
     _log.info(f"Using article IDs {article_ids}")
 
 
-class InProcessQueue(queue_utils.InProcessQueue[FeedTask]):
+class InProcessQueue(aqueue.InProcessQueue[FeedTask]):
     def __init__(self) -> None:
         super().__init__(_process_feed)

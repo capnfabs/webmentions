@@ -7,6 +7,7 @@ T = TypeVar('T', contravariant=True)
 
 _log = log.get(__name__)
 
+
 class TaskQueue(Protocol, Generic[T]):
     def enqueue(self, item: T) -> None: ...
 
@@ -18,12 +19,15 @@ def _make_sentinel() -> Any:
         pass
     return SpookyAnonymousClass()
 
+
 _EXIT_SENTINEL = _make_sentinel
 
 
 class InProcessQueue(TaskQueue[T], Generic[T]):
 
-    def _queue_thread(self, item_queue: queue.Queue, item_processor: Callable[[T], None]) -> None:
+    def _queue_thread(
+        self, item_queue: queue.Queue, item_processor: Callable[[T], None]
+    ) -> None:
         _log.info('Queue %(queue)s starting', queue=self)
         while True:
             item = item_queue.get()

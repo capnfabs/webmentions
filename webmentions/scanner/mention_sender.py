@@ -4,12 +4,13 @@ import bs4
 import requests
 from lxml import etree
 
-from webmentions.scanner import request_utils
-from webmentions.scanner.bs4_utils import tag
+from webmentions.util.bs4_utils import tag
 from webmentions.scanner.mention_detector import MentionCapabilities
 from webmentions import log
+from webmentions.util.request_utils import WrappedResponse
 
 _log = log.get(__name__)
+
 
 class MentionCandidate(NamedTuple):
     # absolute
@@ -57,11 +58,11 @@ def _send_pingback(mention_candidate: MentionCandidate) -> None:
 
     # TODO(ux): handle not-ok, report it back to the user.
     assert r.ok
-    r = request_utils.WrappedResponse(r)
+    r = WrappedResponse(r)
     fault_struct = r.parsed_xml.select('methodResponse>fault>value>struct')
     if fault_struct:
         # there should be at most one fault_struct
-        _handle_fault(fault_struct[0])
+        _handle_pingback_fault(fault_struct[0])
 
     _log.info(f"Sent pingback successfully.")
 
@@ -73,7 +74,7 @@ def _send_pingback(mention_candidate: MentionCandidate) -> None:
             _log.info(f"Got pingback response: {result_text:1000}")
 
 
-def _handle_fault(fault_struct: bs4.Tag) -> NoReturn:
+def _handle_pingback_fault(fault_struct: bs4.Tag) -> NoReturn:
     members = fault_struct.find_all('member')
     if not members:
         raise INDETERMINATE_ERROR
@@ -139,9 +140,9 @@ def _build_pingback_xml(mention_candidate: MentionCandidate) -> str:
 
     params = etree.Element('params')
     method_call.append(params)
-    source_param = _build_param(source_uri)
+    source_param = _build_pingback_xml_param(source_uri)
     params.append(source_param)
-    target_param = _build_param(target_uri)
+    target_param = _build_pingback_xml_param(target_uri)
     params.append(target_param)
     xml_tree = etree.ElementTree(method_call)
     return etree.tostring(
@@ -149,7 +150,7 @@ def _build_pingback_xml(mention_candidate: MentionCandidate) -> str:
     ).decode('utf-8')
 
 
-def _build_param(value_abs_url: str) -> etree._Element:
+def _build_pingback_xml_param(value_abs_url: str) -> etree._Element:
     source_param = etree.Element('param')
     value = etree.Element('value')
     str_value = etree.Element('string')

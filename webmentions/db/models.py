@@ -1,4 +1,3 @@
-import base64
 import datetime
 import secrets
 from typing import Callable, Any
@@ -6,7 +5,7 @@ from typing import Callable, Any
 from sqlalchemy import Text, DateTime, event
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-from webmentions.util import now
+from webmentions.util.time import now
 
 
 class Base(DeclarativeBase):

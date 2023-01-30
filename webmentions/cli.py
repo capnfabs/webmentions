@@ -1,84 +1,43 @@
 import argparse
-from typing import Iterable, NamedTuple, Optional, Protocol
-from urllib import parse
+from typing import Iterable, Optional
 
-import bs4
-import requests
-
+from webmentions.util import aqueue
 from webmentions import util, db, config
 from webmentions.db import models, maybe_init_db
 from webmentions.db.models import FeedTask
 from webmentions.feed_queue.in_process import InProcessQueue
-from webmentions.scanner.bs4_utils import tag
+from webmentions.scanner.article_handler import parse_page_find_links
 from webmentions.scanner.errors import NoFeedException
 from webmentions.scanner.feed import scan_site_for_feed, link_generator_from_feed, RssItem
 from webmentions.scanner.mention_detector import fetch_page_check_mention_capabilities, \
     NO_CAPABILITIES
 from webmentions.scanner.mention_sender import send_mention, MentionCandidate
-from webmentions.scanner.request_utils import WrappedResponse, \
-    extra_spooky_monkey_patch_to_block_local_traffic
-from webmentions.util import is_only_fragment, now
-from webmentions import queue_utils
+from webmentions.util.request_utils import extra_spooky_monkey_patch_to_block_local_traffic
+from webmentions.util.time import now
 
 
-class Link(NamedTuple):
-    title: str
-    url: str
+def _generate_webmention_candidates(url: str, single_page: bool) -> Iterable[MentionCandidate]:
+    if single_page:
+        articles: Iterable[RssItem] = [RssItem(title='single page', absolute_url=url, guid=None)]
+    else:
+        feed = scan_site_for_feed(url)
+        if not feed:
+            raise NoFeedException(url)
 
+        articles = link_generator_from_feed(feed)
 
-def _find_article_schema_org(html: bs4.BeautifulSoup) -> Optional[bs4.Tag]:
-    schema_org_article = html.find_all(attrs={'itemtype': "https://schema.org/Article"})
-    if not schema_org_article or len(schema_org_article) > 1:
-        return None
-    article_body = tag(schema_org_article[0].find(attrs={'itemprop': 'articleBody'}))
-    return article_body
+    for article_link in articles:
+        print(f'checking {article_link}')
 
-
-def _find_article_semantic_html(html: bs4.BeautifulSoup) -> Optional[bs4.Tag]:
-    all_articles = html.find_all('article')
-    if len(all_articles) == 1:
-        return tag(all_articles[0])
-
-    return None
-
-
-def _find_article(html: bs4.BeautifulSoup) -> Optional[bs4.Tag]:
-    return _find_article_schema_org(html) or _find_article_semantic_html(html)
-
-
-def _parse_page_find_links(page_link: RssItem) -> Iterable[str]:
-    parsed_page_link_netloc = parse.urlparse(page_link.absolute_url).netloc
-    with config.spooky.allow_local_addresses():
-        r = requests.get(page_link.absolute_url)
-    assert r.ok
-    r = WrappedResponse(r)
-    html = bs4.BeautifulSoup(r.text, features="lxml")
-    article_body = _find_article(html)
-    if article_body is None:
-        # TODO(ux): report this probably
-        print("Couldn't resolve article")
-        return
-
-    for link in article_body.find_all('a'):
-        # TODO(ux): filter out nofollow etc
-        # TODO(ux): maybe include images?
-        # TODO:(reliability): maybe cap these to url MAX_LENGTH?
-        #  See eg. https://www.baeldung.com/cs/max-url-length but there's no actual spec'd limit
-        #  AFAICT
-        url = link.get('href')
-        if not url:
-            # Can't work with links that don't have an HREF
-            continue
-        if is_only_fragment(url):
-            continue
-        abs_link = r.resolve_url(url)
-        parsed_abs_link = parse.urlparse(abs_link)
-        if parsed_abs_link.scheme not in ('http', 'https'):
-            continue
-        if parsed_abs_link.netloc == parsed_page_link_netloc:
-            continue
-
-        yield abs_link
+        # TODO(tech debt): this is the bit we should extract into article_handler
+        for link in parse_page_find_links(article_link.absolute_url):
+            capabilities = fetch_page_check_mention_capabilities(link)
+            if capabilities != NO_CAPABILITIES:
+                yield MentionCandidate(
+                    mentioner_url=article_link.absolute_url,
+                    mentioned_url=link,
+                    capabilities=capabilities,
+                )
 
 
 def _scan(url: str, *, notify: bool, single_page: bool) -> None:
@@ -96,34 +55,8 @@ def _scan(url: str, *, notify: bool, single_page: bool) -> None:
                 print(f'🥬 Found a pingback for {mentionable.mentioned_url}! -> "{pingback_link}"')
 
 
-def _generate_webmention_candidates(url: str, single_page: bool) -> Iterable[MentionCandidate]:
-    if single_page:
-        articles: Iterable[RssItem] = [RssItem(title='single page', absolute_url=url, guid=None)]
-    else:
-        feed = scan_site_for_feed(url)
-        if not feed:
-            raise NoFeedException(url)
-
-        articles = link_generator_from_feed(feed)
-
-    for article_link in articles:
-        print(f'checking {article_link}')
-        for link in _parse_page_find_links(article_link):
-            capabilities = fetch_page_check_mention_capabilities(link)
-            if capabilities != NO_CAPABILITIES:
-                yield MentionCandidate(
-                    mentioner_url=article_link.absolute_url,
-                    mentioned_url=link,
-                    capabilities=capabilities,
-                )
-
-
-class ArticleQueue(Protocol):
-    def enqueue_article(self) -> None: ...
-
-
 def _scan_saved(notify: bool) -> None:
-    feed_queue: queue_utils.TaskQueue[FeedTask] = InProcessQueue()
+    feed_queue: aqueue.TaskQueue[FeedTask] = InProcessQueue()
     try:
         # Load all saved items
         with db.db_session() as session:
@@ -137,7 +70,7 @@ def _scan_saved(notify: bool) -> None:
 
 
 def _register(url: str) -> None:
-    assert util.is_absolute_link(url)
+    assert util.url.is_absolute_link(url)
 
     feed = scan_site_for_feed(url)
     if not feed:
@@ -169,6 +102,7 @@ def _register(url: str) -> None:
 
     print('Added feed to DB')
 
+
 def _configure_logging(verbosity: int) -> None:
     import logging
 
@@ -183,6 +117,7 @@ def _configure_logging(verbosity: int) -> None:
         logging.basicConfig(level=logging.INFO)
     else:
         logging.basicConfig()
+
 
 def main() -> None:
     extra_spooky_monkey_patch_to_block_local_traffic()

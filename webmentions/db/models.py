@@ -42,6 +42,7 @@ class DiscoveryFeed(Base):
     # TODO(tech debt): move this into the Base class, I tried this once and it was hard because
     #  I needed to figure out how to define the prefixed_id argument but not make SQLAlchemy
     #  complain at init time IIRC
+    # TODO: also figure out how to type this so you can't get it confused with other models
     id: Mapped[str] = mapped_column(primary_key=True, default=prefixed_id('feed'))
     # We could theoretically end up with multiple users submitting the same thing and would need
     # to handle that somehow.
@@ -94,6 +95,11 @@ class Article(Base):
     )
 
 
+STATE_PROCESSING = 'processing'
+STATE_SUCCEEDED = 'succeeded'
+STATE_PERMAFAIL = 'failed'
+
+
 class OutboundNotification(Base):
     __tablename__ = "outbound_notifications"
 
@@ -117,4 +123,7 @@ class OutboundNotification(Base):
     # These fields are whether it worked or not.
     num_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     last_attempted_at: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=True)
-    succeeded_at: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=True)
+    terminal_at: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=True)
+
+    # See the STATE constants above
+    state: Mapped[str] = mapped_column(Text, nullable=False, default=STATE_PROCESSING)

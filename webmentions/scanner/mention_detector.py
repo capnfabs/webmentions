@@ -2,9 +2,11 @@ from typing import NamedTuple, Optional
 
 import requests
 
-from webmentions import config, util
+from webmentions import config, util, log
 from webmentions.util.bs4_utils import tag
 from webmentions.util.request_utils import WrappedResponse
+
+_log = log.get(__name__)
 
 
 class MentionCapabilities(NamedTuple):
@@ -59,6 +61,7 @@ def _resolve_pingback_url(response: WrappedResponse) -> Optional[str]:
 
 
 def fetch_page_check_mention_capabilities(url: str) -> Optional[MentionCapabilities]:
+    _log.info(f"Checking capabilities of {url}")
     # TODO(ux): warn that this is a page we couldn't load if we can't load it
     try:
         # Note that this follows redirects by default
@@ -66,11 +69,13 @@ def fetch_page_check_mention_capabilities(url: str) -> Optional[MentionCapabilit
         # TODO(reliability): set timeout
         r = requests.get(url, headers={'User-Agent': config.USER_AGENT})
         if not r.ok:
+            _log.info(f"Error loading site: {r.status_code}")
             # TODO(reliability): translate different status codes etc into different classes of
             #  error (transient / permanent)
             print('not ok:', r.status_code, r.text[:1000])
             return None
     except IOError as e:
+        _log.info(f"Error loading site: {e}")
         # TODO: this should probably distinguish based on the type of error, e.g. 'server gone'
         #  should probably do something different to timeout
         print('not ok:', e)
@@ -82,7 +87,16 @@ def fetch_page_check_mention_capabilities(url: str) -> Optional[MentionCapabilit
     webmention_link = _resolve_webmention_url(response)
     pingback_link = _resolve_pingback_url(response)
 
-    return MentionCapabilities(
+    if not webmention_link and not pingback_link:
+        # No capabilities
+        _log.info(f"No capabilities: {r.status_code}")
+        return None
+
+    mc = MentionCapabilities(
         webmention_url=webmention_link,
         pingback_url=pingback_link,
     )
+
+    _log.info(f"Capabilities: {mc}")
+
+    return mc

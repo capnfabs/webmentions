@@ -2,6 +2,7 @@ import argparse
 from typing import Iterable, Optional
 
 from webmentions.article_queue import InProcessArticleQueue
+from webmentions.notification_queue import InProcessNotificationQueue
 from webmentions.util import aqueue
 from webmentions import util, db, config
 from webmentions.db import models, maybe_init_db
@@ -12,6 +13,7 @@ from webmentions.scanner.errors import NoFeedException
 from webmentions.scanner.feed import scan_site_for_feed, link_generator_from_feed, RssItem
 from webmentions.scanner.mention_detector import fetch_page_check_mention_capabilities
 from webmentions.scanner.mention_sender import send_mention, MentionCandidate
+from webmentions.util.aqueue import NoopQueue
 from webmentions.util.request_utils import extra_spooky_monkey_patch_to_block_local_traffic
 from webmentions.util.time import now
 
@@ -29,7 +31,6 @@ def _generate_webmention_candidates(url: str, single_page: bool) -> Iterable[Men
     for article_link in articles:
         print(f'checking {article_link}')
 
-        # TODO(tech debt): this is the bit we should extract into article_handler
         for link in parse_page_find_links(article_link.absolute_url):
             capabilities = fetch_page_check_mention_capabilities(link)
             if capabilities:
@@ -56,7 +57,11 @@ def _scan(url: str, *, notify: bool, single_page: bool) -> None:
 
 
 def _scan_saved(notify: bool) -> None:
-    article_queue: aqueue.TaskQueue[str] = InProcessArticleQueue()
+    if notify:
+        notification_queue: aqueue.TaskQueue[str] = InProcessNotificationQueue()
+    else:
+        notification_queue: aqueue.TaskQueue[str] = NoopQueue()
+    article_queue: aqueue.TaskQueue[str] = InProcessArticleQueue(notification_queue)
     feed_queue: aqueue.TaskQueue[FeedTask] = InProcessQueue(article_queue.enqueue)
 
     try:
@@ -68,9 +73,10 @@ def _scan_saved(notify: bool) -> None:
             print(f'Checking feed {feed.feed_url}...')
             feed_queue.enqueue(feed)
     finally:
+        # gotta get the order right here because some of them depend on the others
         feed_queue.close()
-        # gotta get the order right here
         article_queue.close()
+        notification_queue.close()
 
 
 def _register(url: str) -> None:

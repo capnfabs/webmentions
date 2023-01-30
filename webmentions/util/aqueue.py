@@ -1,3 +1,8 @@
+"""
+Package name is aqueue because I couldn't just call it 'queue' and so I picked an arbitrary
+letter.
+"""
+import logging
 import queue
 import threading
 from typing import Callable, Generic, Protocol, TypeVar, Any
@@ -8,6 +13,9 @@ T = TypeVar('T', contravariant=True)
 _log = log.get(__name__)
 
 
+# TODO(tech debt): I don't love this queue structure; it opens on init and is easy to forget to
+#  close it which results in perceived CLI hangs. Switch to something more context-manager-y or
+#  at least offer that interface I guess.
 class TaskQueue(Protocol, Generic[T]):
     def enqueue(self, item: T) -> None: ...
 
@@ -17,6 +25,7 @@ class TaskQueue(Protocol, Generic[T]):
 def _make_sentinel() -> Any:
     class SpookyAnonymousClass:
         pass
+
     return SpookyAnonymousClass()
 
 
@@ -36,7 +45,10 @@ class InProcessQueue(TaskQueue[T], Generic[T]):
                 break
 
             # TODO(reliability): should we handle errors gracefully here?
-            item_processor(item)
+            try:
+                item_processor(item)
+            except Exception:
+                logging.exception('Error handling task')
 
         _log.info('Queue %(queue)s exiting normally', queue=self)
 
@@ -57,3 +69,11 @@ class InProcessQueue(TaskQueue[T], Generic[T]):
 
     def enqueue(self, item: T) -> None:
         self._queue.put(item)
+
+
+class NoopQueue(TaskQueue[T], Generic[T]):
+    def enqueue(self, item: T) -> None:
+        pass
+
+    def close(self) -> None:
+        pass

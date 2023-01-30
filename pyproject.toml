@@ -12,6 +12,7 @@ requests = "*"
 beautifulsoup4 = "*"
 lxml = "*"
 feedparser = "*"
+sqlalchemy = "2.0.0rc3"
 
 [tool.poetry.group.dev]
 optional = true
@@ -38,6 +39,7 @@ warn_unused_ignores = true
 warn_return_any = true
 warn_redundant_casts = true
 warn_unused_configs = true
+allow_redefinition = true
 
 [[tool.mypy.overrides]]
 module = ["tests.*"]

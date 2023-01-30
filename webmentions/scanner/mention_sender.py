@@ -4,9 +4,13 @@ import bs4
 import requests
 from lxml import etree
 
-from webmentions.scanner import request_utils
-from webmentions.scanner.bs4_utils import tag
+from webmentions.scanner.errors import PermanentError, TransientError
+from webmentions.util.bs4_utils import tag
 from webmentions.scanner.mention_detector import MentionCapabilities
+from webmentions import log
+from webmentions.util.request_utils import WrappedResponse
+
+_log = log.get(__name__)
 
 
 class MentionCandidate(NamedTuple):
@@ -45,6 +49,35 @@ def send_mention(mention_candidate: MentionCandidate) -> None:
         _send_pingback(mention_candidate)
 
 
+_transient_errors = {
+    0x0000,  # generic fault code, interpret as transient
+    # source URI does not exist. We could fetch it even if the remote service can't, so this
+    # is probably transient
+    0x0010,
+    0x0031,  # access denied
+    0x0032,  # bad upstream
+}
+
+_permanent_errors = {
+    0x0011,  # source URI does not contain a link to the target URI
+    0x0020,  # target URI does not exist
+    0x0021,  # target URI can't be used as a target
+}
+
+_not_actually_errors = {
+    0x0030,  # duplicate / already registered
+}
+
+
+def _standardize_pingback_error(ex: 'RemoteError') -> Optional[Exception]:
+    if ex.code in _permanent_errors:
+        return PermanentError(ex)
+    if ex.code in _not_actually_errors:
+        return None
+
+    return TransientError(ex)
+
+
 def _send_pingback(mention_candidate: MentionCandidate) -> None:
     pingback_url = mention_candidate.capabilities.pingback_url
     assert pingback_url
@@ -55,21 +88,29 @@ def _send_pingback(mention_candidate: MentionCandidate) -> None:
 
     # TODO(ux): handle not-ok, report it back to the user.
     assert r.ok
-    print(r.text)
-    r = request_utils.WrappedResponse(r)
+    r = WrappedResponse(r)
     fault_struct = r.parsed_xml.select('methodResponse>fault>value>struct')
     if fault_struct:
         # there should be at most one fault_struct
-        _handle_fault(fault_struct[0])
+        first_fault_struct = fault_struct[0]
+        try:
+            _parse_and_raise_pingback_fault(first_fault_struct)
+        except RemoteError as ex:
+            standard_error = _standardize_pingback_error(ex)
+            if standard_error:
+                raise standard_error
+
+    _log.info(f"Sent pingback successfully.")
 
     # optional return value, used for debug
     result = r.parsed_xml.select('methodResponse>params>param:first-child>value>string')
     if result:
-        # log result? this is optional though
-        print(result[0].text or '')
+        result_text = result[0].text
+        if result_text:
+            _log.info(f"Got pingback response: {result_text:1000}")
 
 
-def _handle_fault(fault_struct: bs4.Tag) -> NoReturn:
+def _parse_and_raise_pingback_fault(fault_struct: bs4.Tag) -> NoReturn:
     members = fault_struct.find_all('member')
     if not members:
         raise INDETERMINATE_ERROR
@@ -80,8 +121,6 @@ def _handle_fault(fault_struct: bs4.Tag) -> NoReturn:
 
     fault_code = next(member for member in members if member_matches(member, 'faultCode'))
     fault_string = next(member for member in members if member_matches(member, 'faultString'))
-    print(fault_code)
-    print(fault_string)
 
     def _safe_navigate(member: Optional[bs4.Tag], *path: str) -> Optional[str]:
         """Grabs a value"""
@@ -102,8 +141,12 @@ def _handle_fault(fault_struct: bs4.Tag) -> NoReturn:
         fault_code = None
     fault_string = _safe_navigate(fault_string, 'value', 'string')
     if fault_code is not None and fault_string is not None:
+        # this is log.info because it's somewhat ordinary operation for our service even though it's
+        # probably bad for the user and we should handle it upstream.
+        _log.info(f'Got pingback fault: {fault_code} / {fault_string[:1000]}')
         raise RemoteError(fault_code, fault_string)
     else:
+        _log.info(f'Got malformed pingback fault response: {fault_struct.prettify()}')
         raise INDETERMINATE_ERROR
 
 
@@ -111,7 +154,6 @@ class RemoteError(Exception):
     def __init__(self, code: int, message: str) -> None:
         super().__init__(f'{code}: {message}')
 
-        # Now for your custom code...
         self.code = code
         self.message = message
 
@@ -133,9 +175,9 @@ def _build_pingback_xml(mention_candidate: MentionCandidate) -> str:
 
     params = etree.Element('params')
     method_call.append(params)
-    source_param = _build_param(source_uri)
+    source_param = _build_pingback_xml_param(source_uri)
     params.append(source_param)
-    target_param = _build_param(target_uri)
+    target_param = _build_pingback_xml_param(target_uri)
     params.append(target_param)
     xml_tree = etree.ElementTree(method_call)
     return etree.tostring(
@@ -143,7 +185,7 @@ def _build_pingback_xml(mention_candidate: MentionCandidate) -> str:
     ).decode('utf-8')
 
 
-def _build_param(value_abs_url: str) -> etree._Element:
+def _build_pingback_xml_param(value_abs_url: str) -> etree._Element:
     source_param = etree.Element('param')
     value = etree.Element('value')
     str_value = etree.Element('string')

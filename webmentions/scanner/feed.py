@@ -5,9 +5,10 @@ import bs4
 import feedparser  # type: ignore
 import requests
 
-from webmentions import util
-from webmentions.scanner import request_utils
-from webmentions.scanner.bs4_utils import tag
+from webmentions import util, config
+from webmentions.util.bs4_utils import tag
+from webmentions.util.request_utils import WrappedResponse
+from webmentions.util.url import is_absolute_link
 
 
 class Feed(NamedTuple):
@@ -18,32 +19,61 @@ class Feed(NamedTuple):
 class RssItem(NamedTuple):
     title: str
     absolute_url: str
+    guid: Optional[str]
 
 
 def link_generator_from_feed(feed: Feed) -> Iterable[RssItem]:
     for item in feed.content.entries:
-        # from RSS spec: link is optional
+        # from RSS spec: link is optional. The feedparser library will
+        # auto-fallback to guid if GUID is set and a permalink but link is not set. Nice.
+        # https://feedparser.readthedocs.io/en/latest/reference-entry-link.html
         link = item.get('link')
         if not link:
-            # Doesn't make sense to handle this if there's no link (we're gonna send a mention based on this link).
+            # Doesn't make sense to handle this if there's no link (we're gonna send a mention based
+            # on this link).
+            # TODO(ux): report this to user
             continue
-        if not util.is_absolute_link(link):
+        if not is_absolute_link(link):
             # We can probably handle these gracefully eventually, but not yet.
+            # TODO(ux): handle non-absolute URLs gracefully
             continue
 
         # from RSS spec: title is optional if description is set
         # https://www.rssboard.org/rss-draft-1#element-channel-item
         title = item.get('title', link)
 
-        assert util.is_absolute_link(link)
-        yield RssItem(title=title, absolute_url=link)
+        assert is_absolute_link(link)
+        yield RssItem(title=title, absolute_url=link, guid=item.get('guid'))
+
+
+def feed_from_url(resolved_url: str) -> Optional[Feed]:
+    r = requests.get(resolved_url)
+    if not r.ok:
+        # TODO(ux): let user know, this is an error in their site or their server is borked or
+        #  something. This would be better if it raised.
+        print("Couldn't find feed")
+        return None
+    assert is_absolute_link(resolved_url)
+    # don't need HTML sanitisation because we're not sticking it in a website or anything
+    # wrapped in BytesIO because as per docs, untrusted strings can trigger filesystem access (!?)
+    # It is cursed; I do not like it one bit.
+    # the docs say that you can pass a StringIO around a string, but it breaks a regex somewhere in
+    # feedparser, so you have to supply a BytesIO and then pass the response headers through to
+    # maximise the chances of getting the content encoding right. Gross.
+    # TODO(reliability): wrap feedparser to watch out for sharp edges
+    feed_content = feedparser.parse(io.BytesIO(r.content), response_headers=r.headers)
+    # TODO(ux): check feed_content for validity
+    return Feed(
+        absolute_url=resolved_url,
+        content=feed_content,
+    )
 
 
 def scan_site_for_feed(url: str) -> Optional[Feed]:
-    with request_utils.allow_local_addresses():
+    with config.spooky.allow_local_addresses():
         r = requests.get(url)
     assert r.ok
-    response = request_utils.WrappedResponse(r)
+    response = WrappedResponse(r)
     html = response.parsed_html
     rss_link = tag(html.find('link', attrs={'rel': 'alternate', 'type': 'application/rss+xml'}))
     atom_link = tag(html.find('link', attrs={'rel': 'alternate', 'type': 'application/atom+xml'}))
@@ -57,24 +87,7 @@ def scan_site_for_feed(url: str) -> Optional[Feed]:
             return None
 
         resolved_url = response.resolve_url(hrefs[0])
-        r = requests.get(resolved_url)
-        if not r.ok:
-            # TODO(ux): let user know, this is an error in their site or their server is borked or something
-            print("Couldn't find feed")
-            return None
-
-        assert util.is_absolute_link(resolved_url)
-        # don't need HTML sanitisation because we're not sticking it in a website or anything
-        # wrapped in BytesIO because as per docs, untrusted strings can trigger filesystem access (!?)
-        # It is cursed; I do not like it one bit.
-        # the docs say that you can pass a StringIO around a string, but it breaks a regex somewhere in feedparser,
-        # so you have to supply a BytesIO and then pass the response headers through to maximise the chances of getting
-        # the content encoding right. Gross.
-        # TODO(reliability): wrap feedparser to watch out for sharp edges
-        return Feed(
-            absolute_url=resolved_url,
-            content=feedparser.parse(io.BytesIO(r.content), response_headers=r.headers),
-        )
+        return feed_from_url(resolved_url)
 
     # rss has preference, chosen arbitrarily 🤷
     links = [rss_link, atom_link]

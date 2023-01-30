@@ -2,8 +2,8 @@ import datetime
 import secrets
 from typing import Callable, Any
 
-from sqlalchemy import Text, DateTime, event
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy import CheckConstraint, Text, DateTime, event, ForeignKey
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from webmentions.util.time import now
 
@@ -36,7 +36,9 @@ class DiscoveryFeed(Base):
     """
     __tablename__ = "discovery_feeds"
 
-    # TODO(tech debt): move this into the Base class
+    # TODO(tech debt): move this into the Base class, I tried this once and it was hard because
+    #  I needed to figure out how to define the prefixed_id argument but not make SQLAlchemy
+    #  complain at init time IIRC
     id: Mapped[str] = mapped_column(primary_key=True, default=prefixed_id('feed'))
     # We could theoretically end up with multiple users submitting the same thing and would need
     # to handle that somehow.
@@ -83,3 +85,28 @@ class Article(Base):
     url: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     page_scan_completed_at: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=True)
     notifications_completed_at: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=True)
+
+    notifications: Mapped[list["OutboundNotification"]] = relationship(
+        back_populates="source_article"
+    )
+
+
+class OutboundNotification(Base):
+    __tablename__ = "outbound_notifications"
+
+    __table_args__ = (
+        CheckConstraint(
+            "((webmention_endpoint IS NOT NULL) OR (pingback_endpoint IS NOT NULL))",
+            name="one_of_webmention_or_pingback"
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(primary_key=True, default=prefixed_id('outboundnotif'))
+    # Source: use an Article
+    source_article_id: Mapped[str] = mapped_column(ForeignKey("articles.id"), nullable=False)
+    source_article: Mapped['Article'] = relationship(back_populates='notifications')
+    target_url: Mapped[str] = mapped_column(Text, nullable=False)
+    webmention_endpoint: Mapped[str] = mapped_column(Text, nullable=True)
+    # we store both of these because we might try sending a webmention and then if it fails we
+    # send a pingback instead, or something.
+    pingback_endpoint: Mapped[str] = mapped_column(Text, nullable=True)

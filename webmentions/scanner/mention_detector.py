@@ -12,9 +12,6 @@ class MentionCapabilities(NamedTuple):
     pingback_url: Optional[str]
 
 
-NO_CAPABILITIES = MentionCapabilities(webmention_url=None, pingback_url=None)
-
-
 def _resolve_webmention_url(response: WrappedResponse) -> Optional[str]:
     webmention_header = response.links.get('webmention')
     if webmention_header:
@@ -61,18 +58,23 @@ def _resolve_pingback_url(response: WrappedResponse) -> Optional[str]:
     return None
 
 
-def fetch_page_check_mention_capabilities(url: str) -> MentionCapabilities:
+def fetch_page_check_mention_capabilities(url: str) -> Optional[MentionCapabilities]:
     # TODO(ux): warn that this is a page we couldn't load if we can't load it
     try:
         # Note that this follows redirects by default
         # See https://requests.readthedocs.io/en/latest/user/quickstart/#redirection-and-history
+        # TODO(reliability): set timeout
         r = requests.get(url, headers={'User-Agent': config.USER_AGENT})
         if not r.ok:
+            # TODO(reliability): translate different status codes etc into different classes of
+            #  error (transient / permanent)
             print('not ok:', r.status_code, r.text[:1000])
-            return NO_CAPABILITIES
+            return None
     except IOError as e:
+        # TODO: this should probably distinguish based on the type of error, e.g. 'server gone'
+        #  should probably do something different to timeout
         print('not ok:', e)
-        return NO_CAPABILITIES
+        return None
 
     assert r.ok
 

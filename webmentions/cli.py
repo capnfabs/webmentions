@@ -9,8 +9,7 @@ from webmentions.feed_queue.in_process import InProcessQueue
 from webmentions.scanner.article_handler import parse_page_find_links
 from webmentions.scanner.errors import NoFeedException
 from webmentions.scanner.feed import scan_site_for_feed, link_generator_from_feed, RssItem
-from webmentions.scanner.mention_detector import fetch_page_check_mention_capabilities, \
-    NO_CAPABILITIES
+from webmentions.scanner.mention_detector import fetch_page_check_mention_capabilities
 from webmentions.scanner.mention_sender import send_mention, MentionCandidate
 from webmentions.util.request_utils import extra_spooky_monkey_patch_to_block_local_traffic
 from webmentions.util.time import now
@@ -32,7 +31,7 @@ def _generate_webmention_candidates(url: str, single_page: bool) -> Iterable[Men
         # TODO(tech debt): this is the bit we should extract into article_handler
         for link in parse_page_find_links(article_link.absolute_url):
             capabilities = fetch_page_check_mention_capabilities(link)
-            if capabilities != NO_CAPABILITIES:
+            if capabilities:
                 yield MentionCandidate(
                     mentioner_url=article_link.absolute_url,
                     mentioned_url=link,

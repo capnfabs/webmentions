@@ -1,9 +1,7 @@
-import queue
-import threading
-
 from webmentions import db
 from webmentions.db.models import FeedTask, Article
 from webmentions.feed_queue import FeedQueue
+from webmentions import queue_utils
 from webmentions.scanner.feed import link_generator_from_feed, feed_from_url
 
 
@@ -12,6 +10,7 @@ def _process_feed(feed_task: FeedTask) -> None:
     #  logic
     print(f'Checking {feed_task.feed_url}, we checked it last on {feed_task.last_scan_completed}')
 
+    # TODO(reliability): support etags here
     feed = feed_from_url(feed_task.feed_url)
     assert feed
     articles = list(link_generator_from_feed(feed))
@@ -34,34 +33,11 @@ def _process_feed(feed_task: FeedTask) -> None:
         session.add_all(articles_orm)
         session.flush()
         article_ids = [article.id for article in articles_orm]
+
+    # TODO(reliability): delete old articles?
     print(article_ids)
 
 
-def _queue_thread(feed_queue: queue.Queue) -> None:
-    while True:
-        feed = feed_queue.get()
-        # 'None' is our exit sentinel
-        if feed is None:
-            print('Queue is closed')
-            return
-
-        _process_feed(feed)
-
-
-class InProcessQueue(FeedQueue):
+class InProcessQueue(queue_utils.InProcessQueue[FeedTask]):
     def __init__(self) -> None:
-        _queue: queue.Queue = queue.Queue()
-        self._queue = _queue
-        # Should I switch to multiprocessing because the GIL is going to be awful? I think this
-        # is mostly IO bound so probably don't need to sweat it yet.
-        self._thread = threading.Thread(target=_queue_thread, args=(_queue,))
-        self._thread.start()
-
-    def close(self) -> None:
-        # This is an exit sentinel for the queue processor, which should automatically terminate
-        # the thread too.
-        self._queue.put(None)
-        self._thread.join()
-
-    def enqueue_feed(self, feed: FeedTask) -> None:
-        self._queue.put(feed)
+        super().__init__(_process_feed)

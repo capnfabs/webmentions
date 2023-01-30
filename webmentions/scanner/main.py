@@ -20,6 +20,7 @@ from webmentions.scanner.mention_sender import send_mention, MentionCandidate
 from webmentions.scanner.request_utils import WrappedResponse, \
     extra_spooky_monkey_patch_to_block_local_traffic
 from webmentions.util import is_only_fragment, now
+from webmentions import queue_utils
 
 
 class Link(NamedTuple):
@@ -124,7 +125,7 @@ class ArticleQueue(Protocol):
 
 
 def _scan_saved(notify: bool) -> None:
-    feed_queue: FeedQueue = InProcessQueue()
+    feed_queue: queue_utils.TaskQueue[FeedTask] = InProcessQueue()
     try:
         # Load all saved items
         with db.db_session() as session:
@@ -132,7 +133,7 @@ def _scan_saved(notify: bool) -> None:
             session.expunge_all()
         for feed in feeds:
             print(f'Checking feed {feed}...')
-            feed_queue.enqueue_feed(feed)
+            feed_queue.enqueue(feed)
     finally:
         feed_queue.close()
 

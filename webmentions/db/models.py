@@ -2,7 +2,7 @@ import datetime
 import secrets
 from typing import Callable, Any
 
-from sqlalchemy import CheckConstraint, Text, DateTime, event, ForeignKey
+from sqlalchemy import CheckConstraint, Text, DateTime, event, ForeignKey, Integer
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from webmentions.util.time import now
@@ -110,3 +110,8 @@ class OutboundNotification(Base):
     # we store both of these because we might try sending a webmention and then if it fails we
     # send a pingback instead, or something.
     pingback_endpoint: Mapped[str] = mapped_column(Text, nullable=True)
+
+    # These fields are whether it worked or not.
+    num_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_attempted_at: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=True)
+    succeeded_at: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=True)

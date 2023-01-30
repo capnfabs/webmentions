@@ -1,6 +1,7 @@
 import argparse
 from typing import Iterable, Optional
 
+from webmentions.article_queue import InProcessArticleQueue
 from webmentions.util import aqueue
 from webmentions import util, db, config
 from webmentions.db import models, maybe_init_db
@@ -55,7 +56,9 @@ def _scan(url: str, *, notify: bool, single_page: bool) -> None:
 
 
 def _scan_saved(notify: bool) -> None:
-    feed_queue: aqueue.TaskQueue[FeedTask] = InProcessQueue()
+    article_queue: aqueue.TaskQueue[str] = InProcessArticleQueue()
+    feed_queue: aqueue.TaskQueue[FeedTask] = InProcessQueue(article_queue.enqueue)
+
     try:
         # Load all saved items
         with db.db_session() as session:
@@ -66,6 +69,8 @@ def _scan_saved(notify: bool) -> None:
             feed_queue.enqueue(feed)
     finally:
         feed_queue.close()
+        # gotta get the order right here
+        article_queue.close()
 
 
 def _register(url: str) -> None:

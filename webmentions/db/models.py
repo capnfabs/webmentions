@@ -22,7 +22,10 @@ def prefixed_id(prefix: str) -> Callable[[], str]:
     assert not prefix.endswith('_')
 
     def anon_method() -> str:
-        return f'{prefix}_{secrets.token_urlsafe(32)}'
+        # UUIDs are 16 bytes, we're using the same. I'd love to eventually switch to base62 for this
+        # but I don't want to have to roll it myself, and am also vaguely worried about perf (
+        # python's base64 is via C code).
+        return f'{prefix}_{secrets.token_urlsafe(16)}'
 
     return anon_method
 

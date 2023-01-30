@@ -31,7 +31,7 @@ def readonly_session() -> Generator[Session, None, None]:
         else:
             # we're about to raise and that could trigger exiting the context
             # manager, and if we do that it's going to raise again because of the subsequent
-            # is_clean check. So rollback before we raise to prevent double-exception-firing
+            # is_clean check. So rollback before we raise to prevent double-exception-firing.
             session.rollback()
             # This is not super helpful, would be better if it included info about what things were being flushed
             raise _READONLY_SESSION_EXCEPTION

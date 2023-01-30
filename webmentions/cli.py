@@ -60,7 +60,7 @@ def _scan_saved(notify: bool) -> None:
     if notify:
         notification_queue: aqueue.TaskQueue[str] = InProcessNotificationQueue()
     else:
-        notification_queue: aqueue.TaskQueue[str] = NoopQueue()
+        notification_queue = NoopQueue()
     article_queue: aqueue.TaskQueue[str] = InProcessArticleQueue(notification_queue)
     feed_queue: aqueue.TaskQueue[FeedTask] = InProcessQueue(article_queue.enqueue)
 

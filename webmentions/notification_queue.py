@@ -25,6 +25,10 @@ def _process_item(notification_id: str) -> None:
             .filter_by(id=notification_id).one_or_none())
         session.expunge_all()
 
+    if not notification:
+        _log.warning(f"Skipping {notification_id}, it has vanished")
+        return
+
     if _status_terminal(notification):
         # Nothing to do
         _log.warning(f"Skipping {notification_id}, already processed")

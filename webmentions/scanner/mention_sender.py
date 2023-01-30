@@ -51,9 +51,9 @@ def send_mention(mention_candidate: MentionCandidate) -> None:
 
 _transient_errors = {
     0x0000,  # generic fault code, interpret as transient
-    0x0010,
     # source URI does not exist. We could fetch it even if the remote service can't, so this
     # is probably transient
+    0x0010,
     0x0031,  # access denied
     0x0032,  # bad upstream
 }
@@ -92,9 +92,9 @@ def _send_pingback(mention_candidate: MentionCandidate) -> None:
     fault_struct = r.parsed_xml.select('methodResponse>fault>value>struct')
     if fault_struct:
         # there should be at most one fault_struct
-        fault_struct = fault_struct[0]
+        first_fault_struct = fault_struct[0]
         try:
-            _parse_and_raise_pingback_fault(fault_struct)
+            _parse_and_raise_pingback_fault(first_fault_struct)
         except RemoteError as ex:
             standard_error = _standardize_pingback_error(ex)
             if standard_error:

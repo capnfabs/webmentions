@@ -56,6 +56,7 @@ class TestMentionSender(unittest.TestCase):
             mention_sender.send_mention(mc)
             assert False, 'expected exception'
         except mention_sender.RemoteError as err:
+            # TODO: fix this.
             assert err.code == 0
             assert err.message == 'Invalid discovery target'
 

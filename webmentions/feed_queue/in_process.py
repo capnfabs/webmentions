@@ -1,14 +1,16 @@
 from webmentions import db
 from webmentions.db.models import FeedTask, Article
-from webmentions.feed_queue import FeedQueue
 from webmentions import queue_utils
 from webmentions.scanner.feed import link_generator_from_feed, feed_from_url
+from webmentions import log
 
+
+_log = log.get(__name__)
 
 def _process_feed(feed_task: FeedTask) -> None:
     # TODO(tech debt): move this to a package where it belongs, this is business logic, not queue
     #  logic
-    print(f'Checking {feed_task.feed_url}, we checked it last on {feed_task.last_scan_completed}')
+    _log.info(f'Checking {feed_task.feed_url}, we checked it last on {feed_task.last_scan_completed}')
 
     # TODO(reliability): support etags here
     feed = feed_from_url(feed_task.feed_url)
@@ -35,7 +37,7 @@ def _process_feed(feed_task: FeedTask) -> None:
         article_ids = [article.id for article in articles_orm]
 
     # TODO(reliability): delete old articles?
-    print(article_ids)
+    _log.info(f"Using article IDs {article_ids}")
 
 
 class InProcessQueue(queue_utils.InProcessQueue[FeedTask]):

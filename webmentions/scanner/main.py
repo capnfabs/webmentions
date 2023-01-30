@@ -130,7 +130,7 @@ def _scan_saved(notify: bool) -> None:
             feeds = session.query(FeedTask).all()
             session.expunge_all()
         for feed in feeds:
-            print(f'Checking feed {feed}...')
+            print(f'Checking feed {feed.feed_url}...')
             feed_queue.enqueue(feed)
     finally:
         feed_queue.close()
@@ -169,6 +169,20 @@ def _register(url: str) -> None:
 
     print('Added feed to DB')
 
+def _configure_logging(verbosity: int) -> None:
+    import logging
+
+    if verbosity >= 3:
+        # TODO: this doesn't work right now because the db engine gets imported
+        # before anything else happens
+        config.ECHO_SQL = True
+        logging.basicConfig(level=logging.DEBUG)
+    elif verbosity == 2:
+        logging.basicConfig(level=logging.DEBUG)
+    elif verbosity == 1:
+        logging.basicConfig(level=logging.INFO)
+    else:
+        logging.basicConfig()
 
 def main() -> None:
     extra_spooky_monkey_patch_to_block_local_traffic()
@@ -192,10 +206,16 @@ def main() -> None:
 
     # Actually send the webmentions. Like the opposite of a dry_run flag.
     parser.add_argument('--real', action='store_true')
+
+    # Verbose
+    parser.add_argument('--verbose', '-v', action='count', default=0)
+
     args = parser.parse_args()
 
-    all_args = [args.site, args.page, args.register]
-    count_mode_args = len([arg for arg in all_args if arg])
+    _configure_logging(args.verbose)
+
+    all_mode_args = [args.site, args.page, args.register]
+    count_mode_args = len([arg for arg in all_mode_args if arg])
     if count_mode_args > 1:
         # TODO: make this user facing
         raise Exception("Only one of `site`, `page` and `register` can be supplied.")

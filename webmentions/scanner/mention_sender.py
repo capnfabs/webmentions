@@ -7,7 +7,9 @@ from lxml import etree
 from webmentions.scanner import request_utils
 from webmentions.scanner.bs4_utils import tag
 from webmentions.scanner.mention_detector import MentionCapabilities
+from webmentions import log
 
+_log = log.get(__name__)
 
 class MentionCandidate(NamedTuple):
     # absolute
@@ -55,18 +57,20 @@ def _send_pingback(mention_candidate: MentionCandidate) -> None:
 
     # TODO(ux): handle not-ok, report it back to the user.
     assert r.ok
-    print(r.text)
     r = request_utils.WrappedResponse(r)
     fault_struct = r.parsed_xml.select('methodResponse>fault>value>struct')
     if fault_struct:
         # there should be at most one fault_struct
         _handle_fault(fault_struct[0])
 
+    _log.info(f"Sent pingback successfully.")
+
     # optional return value, used for debug
     result = r.parsed_xml.select('methodResponse>params>param:first-child>value>string')
     if result:
-        # log result? this is optional though
-        print(result[0].text or '')
+        result_text = result[0].text
+        if result_text:
+            _log.info(f"Got pingback response: {result_text:1000}")
 
 
 def _handle_fault(fault_struct: bs4.Tag) -> NoReturn:
@@ -80,8 +84,6 @@ def _handle_fault(fault_struct: bs4.Tag) -> NoReturn:
 
     fault_code = next(member for member in members if member_matches(member, 'faultCode'))
     fault_string = next(member for member in members if member_matches(member, 'faultString'))
-    print(fault_code)
-    print(fault_string)
 
     def _safe_navigate(member: Optional[bs4.Tag], *path: str) -> Optional[str]:
         """Grabs a value"""
@@ -102,8 +104,12 @@ def _handle_fault(fault_struct: bs4.Tag) -> NoReturn:
         fault_code = None
     fault_string = _safe_navigate(fault_string, 'value', 'string')
     if fault_code is not None and fault_string is not None:
+        # this is log.info because it's somewhat ordinary operation for our service even though it's
+        # probably bad for the user and we should handle it upstream.
+        _log.info(f'Got pingback fault: {fault_code} / {fault_string[:1000]}')
         raise RemoteError(fault_code, fault_string)
     else:
+        _log.info(f'Got malformed pingback fault response: {fault_struct.prettify()}')
         raise INDETERMINATE_ERROR
 
 

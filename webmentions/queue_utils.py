@@ -1,8 +1,11 @@
 import queue
 import threading
 from typing import Callable, Generic, Protocol, TypeVar, Any
+from webmentions import log
 
 T = TypeVar('T', contravariant=True)
+
+_log = log.get(__name__)
 
 class TaskQueue(Protocol, Generic[T]):
     def enqueue(self, item: T) -> None: ...
@@ -21,14 +24,17 @@ _EXIT_SENTINEL = _make_sentinel
 class InProcessQueue(TaskQueue[T], Generic[T]):
 
     def _queue_thread(self, item_queue: queue.Queue, item_processor: Callable[[T], None]) -> None:
+        _log.info('Queue %(queue)s starting', queue=self)
         while True:
             item = item_queue.get()
 
             if item is _EXIT_SENTINEL:
-                print('Queue is closed')
-                return
+                break
 
+            # TODO(reliability): should we handle errors gracefully here?
             item_processor(item)
+
+        _log.info('Queue %(queue)s exiting normally', queue=self)
 
     def __init__(self, item_processor: Callable[[T], None]) -> None:
         _queue: queue.Queue = queue.Queue()

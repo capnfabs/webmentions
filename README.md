@@ -14,3 +14,4 @@ Some basic testing:
 tasks/cli --register https://grand-phoenix-d50fd5.netlify.app/
 tasks/cli  # should find two articles
 tasks/cli  # should find zero new articles
+```

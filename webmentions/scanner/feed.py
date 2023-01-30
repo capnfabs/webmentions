@@ -18,17 +18,22 @@ class Feed(NamedTuple):
 class RssItem(NamedTuple):
     title: str
     absolute_url: str
+    guid: Optional[str]
 
 
 def link_generator_from_feed(feed: Feed) -> Iterable[RssItem]:
     for item in feed.content.entries:
-        # from RSS spec: link is optional
+        # from RSS spec: link is optional. The feedparser library will
+        # auto-fallback to guid if GUID is set and a permalink but link is not set. Nice.
+        # https://feedparser.readthedocs.io/en/latest/reference-entry-link.html
         link = item.get('link')
         if not link:
             # Doesn't make sense to handle this if there's no link (we're gonna send a mention based on this link).
+            # TODO(ux): report this to user
             continue
         if not util.is_absolute_link(link):
             # We can probably handle these gracefully eventually, but not yet.
+            # TODO(ux): handle non-absolute URLs gracefully
             continue
 
         # from RSS spec: title is optional if description is set
@@ -36,7 +41,7 @@ def link_generator_from_feed(feed: Feed) -> Iterable[RssItem]:
         title = item.get('title', link)
 
         assert util.is_absolute_link(link)
-        yield RssItem(title=title, absolute_url=link)
+        yield RssItem(title=title, absolute_url=link, guid=item.get('guid'))
 
 
 def feed_from_url(resolved_url: str) -> Optional[Feed]:

@@ -1,5 +1,4 @@
 import argparse
-import multiprocessing
 from typing import Iterable, NamedTuple, Optional, Protocol
 from urllib import parse
 
@@ -9,10 +8,9 @@ from sqlalchemy.orm import Session
 
 from webmentions import util, db, config
 from webmentions.db import models, maybe_init_db
-from webmentions.db.models import DiscoveryFeed, FeedTask
+from webmentions.db.models import FeedTask
 from webmentions.feed_queue import FeedQueue
 from webmentions.feed_queue.in_process import InProcessQueue
-from webmentions.scanner import request_utils
 from webmentions.scanner.bs4_utils import tag
 from webmentions.scanner.errors import NoFeedException
 from webmentions.scanner.feed import scan_site_for_feed, link_generator_from_feed, RssItem
@@ -21,7 +19,7 @@ from webmentions.scanner.mention_detector import fetch_page_check_mention_capabi
 from webmentions.scanner.mention_sender import send_mention, MentionCandidate
 from webmentions.scanner.request_utils import WrappedResponse, \
     extra_spooky_monkey_patch_to_block_local_traffic
-from webmentions.util import is_only_fragment, now, HOUR
+from webmentions.util import is_only_fragment, now
 
 
 class Link(NamedTuple):
@@ -101,7 +99,7 @@ def _scan(url: str, *, notify: bool, single_page: bool) -> None:
 
 def _generate_webmention_candidates(url: str, single_page: bool) -> Iterable[MentionCandidate]:
     if single_page:
-        articles: Iterable[RssItem] = [RssItem(title='single page', absolute_url=url)]
+        articles: Iterable[RssItem] = [RssItem(title='single page', absolute_url=url, guid=None)]
     else:
         feed = scan_site_for_feed(url)
         if not feed:
@@ -130,7 +128,6 @@ def _scan_saved(notify: bool) -> None:
     try:
         # Load all saved items
         with db.db_session() as session:
-            session: Session
             feeds = session.query(FeedTask).all()
             session.expunge_all()
         for feed in feeds:
@@ -157,7 +154,6 @@ def _register(url: str) -> None:
     with db.db_session() as session:
         session.add(feed_model)
         session.flush()
-        session: Session
         task: Optional[FeedTask] = (
             session
             .query(FeedTask)

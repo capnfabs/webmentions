@@ -3,7 +3,7 @@ import threading
 from typing import Generator, Any
 
 USER_AGENT = 'HECK YEAH Webmentions v0.0.1'
-
+ECHO_SQL = False
 
 class SpookyThreadLocalRegistry(threading.local):
     def __init__(self) -> None:

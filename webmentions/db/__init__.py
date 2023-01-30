@@ -4,10 +4,11 @@ from typing import Generator
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
+from webmentions import config
+
 # Note that this is lazy-inited
-# TODO(security): turn off echo
 _MEMORY_DB = "sqlite+pysqlite:///:memory:"
-engine = create_engine("sqlite+pysqlite:///local.db", echo=True)
+engine = create_engine("sqlite+pysqlite:///local.db", echo=config.ECHO_SQL)
 
 
 def maybe_init_db() -> None:

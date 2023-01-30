@@ -4,12 +4,10 @@ from urllib import parse
 
 import bs4
 import requests
-from sqlalchemy.orm import Session
 
 from webmentions import util, db, config
 from webmentions.db import models, maybe_init_db
 from webmentions.db.models import FeedTask
-from webmentions.feed_queue import FeedQueue
 from webmentions.feed_queue.in_process import InProcessQueue
 from webmentions.scanner.bs4_utils import tag
 from webmentions.scanner.errors import NoFeedException
